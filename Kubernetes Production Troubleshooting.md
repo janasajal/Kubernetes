@@ -2,7 +2,6 @@
 ## Top 20 Scenarios 
 
 **Author:** Sajal Jana  
-**Experience:** Senior Kubernetes Administrator with 10+ years of production experience  
 **Last Updated:** February 2026
 
 ---
