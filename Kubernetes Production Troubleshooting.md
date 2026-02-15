@@ -1,5 +1,5 @@
 # Kubernetes Production Troubleshooting Guide
-## Top 20 Scenarios - Concise Edition
+## Top 20 Scenarios
 
 ---
 
