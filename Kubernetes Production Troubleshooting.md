@@ -1,5 +1,40 @@
 # Kubernetes Production Troubleshooting Guide
-## Top 20 Scenarios
+## Top 20 Scenarios - Concise Edition
+
+**Author:** Sajal Jana  
+**Experience:** Senior Kubernetes Administrator with 10+ years of production experience  
+**Last Updated:** February 2026
+
+---
+
+## 📋 Table of Contents
+
+1. [Pod Stuck in CrashLoopBackOff](#1-pod-stuck-in-crashloopbackoff)
+2. [ImagePullBackOff Error](#2-imagepullbackoff-error)
+3. [Node NotReady Status](#3-node-notready-status)
+4. [DNS Resolution Failures](#4-dns-resolution-failures)
+5. [PersistentVolumeClaim Pending](#5-persistentvolumeclaim-pending)
+6. [Service Not Accessible](#6-service-not-accessible)
+7. [High CPU/Memory Usage on Nodes](#7-high-cpumemory-usage-on-nodes)
+8. [Ingress Controller 502/504 Errors](#8-ingress-controller-502504-errors)
+9. [etcd Cluster Unhealthy](#9-etcd-cluster-unhealthy)
+10. [Certificate Expiration Issues](#10-certificate-expiration-issues)
+11. [RBAC Permission Denied](#11-rbac-permission-denied)
+12. [Pod Eviction Due to Resource Pressure](#12-pod-eviction-due-to-resource-pressure)
+13. [CNI Plugin Failure](#13-cni-plugin-failure)
+14. [Horizontal Pod Autoscaler Not Scaling](#14-horizontal-pod-autoscaler-not-scaling)
+15. [StatefulSet Pod Stuck in Pending](#15-statefulset-pod-stuck-in-pending)
+16. [API Server Unresponsive](#16-api-server-unresponsive)
+17. [ConfigMap/Secret Not Updating in Pods](#17-configmapsecret-not-updating-in-pods)
+18. [Network Policy Blocking Traffic](#18-network-policy-blocking-traffic)
+19. [Cluster Upgrade Failure](#19-cluster-upgrade-failure)
+20. [Persistent Volume Data Loss](#20-persistent-volume-data-loss)
+
+**Additional Sections:**
+- [Quick Commands Reference](#-quick-commands-reference)
+- [Monitoring Alerts](#-monitoring-alerts-prometheus)
+- [Essential Tools](#️-essential-tools)
+- [Resources](#-resources)
 
 ---
 
@@ -596,7 +631,7 @@ groups:
 
 **Kubernetes Versions:** 1.26 - 1.29  
 **Last Updated:** February 2026  
-**Author:** Senior K8s Administrator (10+ years production experience)
+**Author:** Sajal Jana - Senior Kubernetes Administrator (10+ years production experience)
 
 ---
 
