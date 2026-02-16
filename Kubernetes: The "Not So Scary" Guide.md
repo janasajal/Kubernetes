@@ -688,6 +688,6 @@ ETCDCTL_API=3 etcdctl endpoint health \
 
 ---
 
-*Document Version: 1.0 (Fun Edition)*  
+
 *Last Updated: February 2026*  
-*Author: Sajal Jana (with comedic enhancements)*
+*Author: Sajal Jana 
