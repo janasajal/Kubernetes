@@ -1,7 +1,6 @@
 # Kubernetes Workloads & Scheduling 
 
 **Author:** Sajal Jana  
-**Motto:** *Because reading documentation shouldn't feel like a punishment*
 
 ---
 
