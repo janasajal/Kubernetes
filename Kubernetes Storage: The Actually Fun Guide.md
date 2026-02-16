@@ -622,9 +622,7 @@ EOF
 **Questions?** Check the logs. Still stuck? Check the events. Still stuck? Google it. Still stuck? Ask your friendly neighborhood SRE. They've seen it all.
 
 ---
-
-**Document Version:** 2.0 (Now with 100% more fun!)  
-**Last Updated:** February 17, 2026  
+  
 **Author:** Sajal Jana  
 **Status:** Caffeinated ☕
 
