@@ -1,8 +1,5 @@
 # Kubernetes: The "Not So Scary" Guide 🚀
 **Author:** Sajal Jana
-
-*A survival guide for platform engineers who want to tame the K8s beast without losing their sanity*
-
 ---
 
 ## Table of Contents
