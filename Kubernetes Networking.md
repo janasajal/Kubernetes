@@ -1,8 +1,6 @@
-# Kubernetes Networking: The Fun Guide 🎢
+# Kubernetes Networking: 🎢
 
 **Author:** Sajal Jana  
-**Disclaimer:** Yes, networking is scary. No, you're not alone. Yes, we'll get through this together.
-
 ---
 
 ## Table of Contents
