@@ -1,2114 +1,612 @@
-# Kubernetes Workloads & Scheduling
+# Kubernetes Workloads & Scheduling 
 
-**Author:** Sajal Jana
-
-A production-focused guide for Kubernetes workload management and scheduling strategies.
-
----
-
-## Table of Contents
-
-- [1. Workload Resources](#1-workload-resources)
-  - [1.1 Deployments](#11-deployments)
-    - [When to Use Deployments](#when-to-use-deployments)
-    - [Creating a Deployment](#creating-a-deployment)
-    - [Deployment Strategies](#deployment-strategies)
-    - [Rolling Updates and Rollbacks](#rolling-updates-and-rollbacks)
-    - [Scaling Deployments](#scaling-deployments)
-  - [1.2 ReplicaSets](#12-replicasets)
-    - [Understanding ReplicaSets](#understanding-replicasets)
-    - [When to Use ReplicaSets](#when-to-use-replicasets)
-    - [Creating a ReplicaSet](#creating-a-replicaset)
-  - [1.3 StatefulSets](#13-statefulsets)
-    - [When to Use StatefulSets](#when-to-use-statefulsets)
-    - [StatefulSet Features](#statefulset-features)
-    - [Creating a StatefulSet](#creating-a-statefulset)
-    - [Headless Services](#headless-services)
-    - [Update Strategies](#update-strategies)
-  - [1.4 DaemonSets](#14-daemonsets)
-    - [When to Use DaemonSets](#when-to-use-daemonsets)
-    - [Creating a DaemonSet](#creating-a-daemonset)
-    - [Updating DaemonSets](#updating-daemonsets)
-  - [1.5 Jobs and CronJobs](#15-jobs-and-cronjobs)
-    - [Jobs](#jobs)
-    - [CronJobs](#cronjobs)
-  - [1.6 Workload Comparison](#16-workload-comparison)
-- [2. Scheduling](#2-scheduling)
-  - [2.1 Node Selectors](#21-node-selectors)
-  - [2.2 Node Affinity](#22-node-affinity)
-    - [Required vs Preferred](#required-vs-preferred)
-    - [Node Affinity Examples](#node-affinity-examples)
-  - [2.3 Taints and Tolerations](#23-taints-and-tolerations)
-    - [Understanding Taints](#understanding-taints)
-    - [Taint Effects](#taint-effects)
-    - [Adding Taints](#adding-taints)
-    - [Pod Tolerations](#pod-tolerations)
-    - [Common Use Cases](#common-use-cases)
-  - [2.4 Pod Affinity and Anti-Affinity](#24-pod-affinity-and-anti-affinity)
-    - [Pod Affinity](#pod-affinity)
-    - [Pod Anti-Affinity](#pod-anti-affinity)
-  - [2.5 Topology Spread Constraints](#25-topology-spread-constraints)
-  - [2.6 Manual Scheduling](#26-manual-scheduling)
-- [3. Resource Management](#3-resource-management)
-  - [3.1 Resource Requests and Limits](#31-resource-requests-and-limits)
-    - [Understanding Requests](#understanding-requests)
-    - [Understanding Limits](#understanding-limits)
-    - [Resource Units](#resource-units)
-    - [Setting Requests and Limits](#setting-requests-and-limits)
-  - [3.2 Quality of Service (QoS) Classes](#32-quality-of-service-qos-classes)
-  - [3.3 LimitRanges](#33-limitranges)
-  - [3.4 ResourceQuotas](#34-resourcequotas)
-  - [3.5 Resource Management Best Practices](#35-resource-management-best-practices)
-- [4. Autoscaling](#4-autoscaling)
-  - [4.1 Horizontal Pod Autoscaler (HPA)](#41-horizontal-pod-autoscaler-hpa)
-    - [Prerequisites](#prerequisites)
-    - [Creating an HPA](#creating-an-hpa)
-    - [HPA Based on Custom Metrics](#hpa-based-on-custom-metrics)
-    - [HPA Behavior Configuration](#hpa-behavior-configuration)
-  - [4.2 Vertical Pod Autoscaler (VPA)](#42-vertical-pod-autoscaler-vpa)
-  - [4.3 Cluster Autoscaler](#43-cluster-autoscaler)
-  - [4.4 Autoscaling Best Practices](#44-autoscaling-best-practices)
-- [5. Configuration Management](#5-configuration-management)
-  - [5.1 ConfigMaps](#51-configmaps)
-    - [Creating ConfigMaps](#creating-configmaps)
-    - [Using ConfigMaps in Pods](#using-configmaps-in-pods)
-    - [ConfigMap Best Practices](#configmap-best-practices)
-  - [5.2 Secrets](#52-secrets)
-    - [Creating Secrets](#creating-secrets)
-    - [Using Secrets in Pods](#using-secrets-in-pods)
-    - [Secret Best Practices](#secret-best-practices)
-  - [5.3 Immutable ConfigMaps and Secrets](#53-immutable-configmaps-and-secrets)
-  - [5.4 Configuration Management Patterns](#54-configuration-management-patterns)
-- [6. Quick Reference](#6-quick-reference)
-  - [6.1 Essential Commands](#61-essential-commands)
-  - [6.2 Common Patterns](#62-common-patterns)
-- [7. Production Checklist](#7-production-checklist)
-- [8. Further Reading](#8-further-reading)
+**Author:** Sajal Jana  
+**Motto:** *Because reading documentation shouldn't feel like a punishment*
 
 ---
 
-## 1. Workload Resources
+## 🎯 Quick Navigation
 
-Kubernetes provides several workload resources to manage application lifecycle. Each serves a specific purpose.
+1. [Workload Resources](#workload-resources) - *The pod wranglers*
+2. [Scheduling](#scheduling) - *Playing favorites with nodes*
+3. [Resource Management](#resource-management) - *Don't be greedy*
+4. [Autoscaling](#autoscaling) - *Set it and forget it (kinda)*
+5. [Configuration Management](#configuration-management) - *Secrets and lies*
+6. [Cheat Sheet](#cheat-sheet) - *For when you forget everything*
 
-### 1.1 Deployments
+---
 
-The most common workload resource for stateless applications.
+## Workload Resources
 
-#### When to Use Deployments
+*Think of these as different ways to babysit your containers*
 
-- **Stateless applications** (web servers, APIs, microservices)
-- Applications requiring **rolling updates** and **rollbacks**
-- Applications that need **easy scaling**
-- Most production workloads
+### Deployments - The Reliable Friend
 
-**Key Features:**
-- Declarative updates
-- Rolling updates and rollbacks
-- Revision history
-- Automatic ReplicaSet management
-- Pause and resume capabilities
-
-#### Creating a Deployment
+**Use when:** You have a normal, well-adjusted stateless app  
+**Avoid when:** Your app needs to remember things (use StatefulSet)
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-deployment
-  labels:
-    app: nginx
+  name: my-awesome-app
 spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: nginx
-  template:
-    metadata:
-      labels:
-        app: nginx
-    spec:
-      containers:
-      - name: nginx
-        image: nginx:1.21
-        ports:
-        - containerPort: 80
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "250m"
-          limits:
-            memory: "128Mi"
-            cpu: "500m"
-```
-
-```bash
-# Create deployment
-kubectl apply -f nginx-deployment.yaml
-
-# Verify deployment
-kubectl get deployments
-kubectl get pods
-kubectl describe deployment nginx-deployment
-```
-
-#### Deployment Strategies
-
-**1. RollingUpdate (Default)**
-
-Updates pods gradually to ensure zero downtime.
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: nginx-deployment
-spec:
-  replicas: 10
+  replicas: 3  # Safety in numbers!
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 2        # Max new pods above desired count
-      maxUnavailable: 1  # Max pods unavailable during update
-  selector:
-    matchLabels:
-      app: nginx
+      maxSurge: 1        # "How many extra pods can we handle?"
+      maxUnavailable: 1  # "How many can fail before panic?"
   template:
-    metadata:
-      labels:
-        app: nginx
     spec:
       containers:
-      - name: nginx
+      - name: app
         image: nginx:1.21
+        resources:
+          requests:
+            memory: "64Mi"   # "I promise I need this much"
+            cpu: "250m"      # "Pretty please?"
+          limits:
+            memory: "128Mi"  # "Don't let me eat more than this"
+            cpu: "500m"      # "Cut me off here"
 ```
 
-**How it works:**
-1. Creates new pods with updated spec
-2. Waits for new pods to be ready
-3. Terminates old pods
-4. Repeats until all pods updated
+**Pro tip:** Always set `replicas: 3` minimum. Because one is lonely, two is risky, and three is a party! 🎉
 
-**2. Recreate**
-
-Terminates all existing pods before creating new ones (causes downtime).
-
-```yaml
-spec:
-  strategy:
-    type: Recreate
-```
-
-**When to use:**
-- Development environments
-- Applications that can't run multiple versions simultaneously
-- Database schema migrations
-
-#### Rolling Updates and Rollbacks
-
+**Common Commands:**
 ```bash
-# Update deployment image
-kubectl set image deployment/nginx-deployment nginx=nginx:1.22
-
-# Check rollout status
-kubectl rollout status deployment/nginx-deployment
-
-# View rollout history
-kubectl rollout history deployment/nginx-deployment
-
-# View specific revision
-kubectl rollout history deployment/nginx-deployment --revision=2
-
-# Rollback to previous version
-kubectl rollout undo deployment/nginx-deployment
-
-# Rollback to specific revision
-kubectl rollout undo deployment/nginx-deployment --to-revision=3
-
-# Pause rollout (useful during troubleshooting)
-kubectl rollout pause deployment/nginx-deployment
-
-# Resume rollout
-kubectl rollout resume deployment/nginx-deployment
+# The greatest hits
+kubectl scale deployment/my-app --replicas=5              # More power!
+kubectl set image deployment/my-app app=nginx:1.22        # Upgrade time
+kubectl rollout undo deployment/my-app                    # Oops, go back!
+kubectl rollout status deployment/my-app                  # Are we there yet?
 ```
 
-#### Scaling Deployments
-
-```bash
-# Scale manually
-kubectl scale deployment/nginx-deployment --replicas=5
-
-# Autoscale (covered in section 4)
-kubectl autoscale deployment/nginx-deployment --min=3 --max=10 --cpu-percent=80
-```
-
-**Declarative Scaling:**
-
-```yaml
-spec:
-  replicas: 5  # Update this value
-```
-
-```bash
-kubectl apply -f nginx-deployment.yaml
-```
-
-### 1.2 ReplicaSets
-
-Ensures a specified number of pod replicas are running at all times.
-
-#### Understanding ReplicaSets
-
-- **Low-level** primitive that Deployments use
-- Manages pod replication
-- Self-healing (restarts failed pods)
-
-```
-Deployment → ReplicaSet → Pods
-```
-
-#### When to Use ReplicaSets
-
-**Directly:** Rarely recommended
-- Only when you need custom update orchestration
-- Advanced scenarios not covered by Deployments
-
-**Indirectly:** Always (through Deployments)
-- Deployments automatically create and manage ReplicaSets
-
-#### Creating a ReplicaSet
-
-```yaml
-apiVersion: apps/v1
-kind: ReplicaSet
-metadata:
-  name: nginx-replicaset
-  labels:
-    app: nginx
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: nginx
-  template:
-    metadata:
-      labels:
-        app: nginx
-    spec:
-      containers:
-      - name: nginx
-        image: nginx:1.21
-        ports:
-        - containerPort: 80
-```
-
-```bash
-# Create ReplicaSet
-kubectl apply -f nginx-replicaset.yaml
-
-# View ReplicaSets
-kubectl get rs
-
-# Describe ReplicaSet
-kubectl describe rs nginx-replicaset
-
-# Scale ReplicaSet
-kubectl scale rs/nginx-replicaset --replicas=5
-```
-
-**Important:** ReplicaSets don't support rolling updates. Changing the template doesn't update existing pods.
-
-### 1.3 StatefulSets
-
-Manages stateful applications with stable identities and persistent storage.
-
-#### When to Use StatefulSets
-
-- **Databases** (MySQL, PostgreSQL, MongoDB)
-- **Distributed systems** (Kafka, ZooKeeper, etcd)
-- **Applications requiring:**
-  - Stable network identities
-  - Stable persistent storage
-  - Ordered deployment and scaling
-  - Ordered rolling updates
-
-#### StatefulSet Features
-
-**Stable Network Identity:**
-- Predictable pod names: `<statefulset-name>-<ordinal>`
-- Example: `mysql-0`, `mysql-1`, `mysql-2`
-- DNS names: `<pod-name>.<service-name>.<namespace>.svc.cluster.local`
-
-**Ordered Operations:**
-- Pods created sequentially (0, 1, 2...)
-- Pods deleted in reverse order (2, 1, 0...)
-- Updates applied in order
-
-**Persistent Storage:**
-- Each pod gets dedicated PersistentVolume
-- Storage persists even if pod is deleted
-
-#### Creating a StatefulSet
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: mysql-headless
-spec:
-  clusterIP: None  # Headless service
-  selector:
-    app: mysql
-  ports:
-  - port: 3306
 ---
+
+### StatefulSets - The Clingy One
+
+**Use when:** Your app has commitment issues (needs stable identity & storage)  
+**Perfect for:** Databases, Kafka, anything that remembers you
+
+```yaml
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: mysql
 spec:
-  serviceName: mysql-headless
+  serviceName: mysql-headless  # "I need my personal space"
   replicas: 3
-  selector:
-    matchLabels:
-      app: mysql
   template:
-    metadata:
-      labels:
-        app: mysql
     spec:
       containers:
       - name: mysql
         image: mysql:8.0
-        ports:
-        - containerPort: 3306
-          name: mysql
-        env:
-        - name: MYSQL_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secret
-              key: password
         volumeMounts:
         - name: data
           mountPath: /var/lib/mysql
-  volumeClaimTemplates:
+  volumeClaimTemplates:  # Each pod gets its own storage
   - metadata:
       name: data
     spec:
-      accessModes: [ "ReadWriteOnce" ]
+      accessModes: ["ReadWriteOnce"]
       resources:
         requests:
-          storage: 10Gi
+          storage: 10Gi  # "This is MY disk, get your own!"
 ```
 
-```bash
-# Create StatefulSet
-kubectl apply -f mysql-statefulset.yaml
+**Key Features:**
+- Predictable names: `mysql-0`, `mysql-1`, `mysql-2` (no random suffixes!)
+- Ordered operations: Created 0→1→2, deleted 2→1→0 (polite and organized)
+- Persistent storage: "Till delete do us part"
 
-# View StatefulSets
-kubectl get statefulsets
-kubectl get sts  # Short form
+**Warning:** Don't use StatefulSets for stateless apps. That's like buying a sports car for grocery shopping. 🏎️🛒
 
-# View pods (note ordered names)
-kubectl get pods
+---
 
-# View PVCs (one per pod)
-kubectl get pvc
+### DaemonSets - The Everywhere Agent
 
-# Scale StatefulSet
-kubectl scale statefulset/mysql --replicas=5
-
-# Delete StatefulSet (keeps PVCs)
-kubectl delete statefulset mysql
-
-# Delete StatefulSet and PVCs
-kubectl delete statefulset mysql
-kubectl delete pvc data-mysql-0 data-mysql-1 data-mysql-2
-```
-
-#### Headless Services
-
-Required for StatefulSets to provide stable network identities.
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: mysql-headless
-spec:
-  clusterIP: None  # Makes it headless
-  selector:
-    app: mysql
-  ports:
-  - port: 3306
-```
-
-**DNS Resolution:**
-```bash
-# Individual pod DNS
-mysql-0.mysql-headless.default.svc.cluster.local
-mysql-1.mysql-headless.default.svc.cluster.local
-
-# Test DNS resolution
-kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup mysql-0.mysql-headless
-```
-
-#### Update Strategies
-
-**RollingUpdate (Default):**
-```yaml
-spec:
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      partition: 0  # Update all pods
-```
-
-**OnDelete:**
-```yaml
-spec:
-  updateStrategy:
-    type: OnDelete  # Manual update by deleting pods
-```
-
-**Partitioned Rolling Update:**
-```yaml
-spec:
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      partition: 2  # Only update pods >= ordinal 2
-```
-
-### 1.4 DaemonSets
-
-Ensures a copy of a pod runs on all (or selected) nodes.
-
-#### When to Use DaemonSets
-
-- **Monitoring agents** (Prometheus node-exporter, Datadog agent)
-- **Log collectors** (Fluentd, Filebeat)
-- **Node-level storage** (Ceph, GlusterFS)
-- **Network plugins** (Calico, Flannel)
-- **Security agents** (Falco)
-
-**Key Characteristics:**
-- One pod per node (automatically)
-- Pods scheduled on new nodes automatically
-- Pods removed when nodes are deleted
-
-#### Creating a DaemonSet
+**Use when:** Every node needs one (and only one) copy  
+**Perfect for:** Monitoring agents, log collectors, that nosy friend who's always around
 
 ```yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: fluentd
-  namespace: kube-system
-  labels:
-    app: fluentd
 spec:
-  selector:
-    matchLabels:
-      app: fluentd
   template:
-    metadata:
-      labels:
-        app: fluentd
     spec:
       tolerations:
-      # Run on control plane nodes too
       - key: node-role.kubernetes.io/control-plane
-        effect: NoSchedule
+        effect: NoSchedule  # "I can sit anywhere, even with the VIPs"
       containers:
       - name: fluentd
         image: fluentd:v1.14
-        resources:
-          limits:
-            memory: 200Mi
-          requests:
-            cpu: 100m
-            memory: 200Mi
-        volumeMounts:
-        - name: varlog
-          mountPath: /var/log
-        - name: varlibdockercontainers
-          mountPath: /var/lib/docker/containers
-          readOnly: true
-      volumes:
-      - name: varlog
-        hostPath:
-          path: /var/log
-      - name: varlibdockercontainers
-        hostPath:
-          path: /var/lib/docker/containers
 ```
 
-```bash
-# Create DaemonSet
-kubectl apply -f fluentd-daemonset.yaml
+**Reality check:** One DaemonSet pod per node, automatically. New node joins? Pod appears. Node leaves? Pod vanishes. It's like magic, but with YAML.
 
-# View DaemonSets
-kubectl get daemonsets -n kube-system
-kubectl get ds -n kube-system  # Short form
+---
 
-# Describe DaemonSet
-kubectl describe ds/fluentd -n kube-system
+### Jobs & CronJobs - The Task Masters
 
-# Check DaemonSet pods
-kubectl get pods -n kube-system -l app=fluentd -o wide
-```
-
-#### Updating DaemonSets
-
-**RollingUpdate (Default):**
-```yaml
-spec:
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1  # Max nodes without the daemon pod
-```
-
-**OnDelete:**
-```yaml
-spec:
-  updateStrategy:
-    type: OnDelete  # Manual update by deleting pods
-```
-
-**Update Commands:**
-```bash
-# Update DaemonSet image
-kubectl set image ds/fluentd fluentd=fluentd:v1.15 -n kube-system
-
-# Check rollout status
-kubectl rollout status ds/fluentd -n kube-system
-
-# View rollout history
-kubectl rollout history ds/fluentd -n kube-system
-
-# Rollback
-kubectl rollout undo ds/fluentd -n kube-system
-```
-
-**Selective Deployment:**
-```yaml
-spec:
-  template:
-    spec:
-      nodeSelector:
-        disktype: ssd  # Only on nodes with this label
-```
-
-### 1.5 Jobs and CronJobs
-
-#### Jobs
-
-Runs pods to completion (for batch processing, one-off tasks).
+**Jobs:** Run once and peace out ✌️  
+**CronJobs:** Run on schedule, like clockwork ⏰
 
 ```yaml
+# Job - "I'll do it once and I'm done"
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: data-import
+  name: data-migration
 spec:
-  completions: 5      # Total successful completions needed
-  parallelism: 2      # Max pods running in parallel
-  backoffLimit: 3     # Max retries before marking failed
+  completions: 1
   template:
     spec:
-      restartPolicy: Never  # or OnFailure
+      restartPolicy: Never  # "No second chances"
       containers:
-      - name: importer
-        image: data-importer:v1
-        command: ["python", "import.py"]
-```
-
-```bash
-# Create Job
-kubectl apply -f data-import-job.yaml
-
-# View Jobs
-kubectl get jobs
-
-# View Job pods
-kubectl get pods --selector=job-name=data-import
-
-# View Job logs
-kubectl logs job/data-import
-
-# Delete Job (and pods)
-kubectl delete job data-import
-
-# Delete Job but keep pods
-kubectl delete job data-import --cascade=orphan
-```
-
-#### CronJobs
-
-Runs Jobs on a schedule (like cron).
-
-```yaml
+      - name: migrator
+        image: data-migrator:v1
+---
+# CronJob - "Same time, every day"
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: backup-job
+  name: backup
 spec:
-  schedule: "0 2 * * *"  # Daily at 2 AM (UTC)
+  schedule: "0 2 * * *"  # 2 AM daily (when humans sleep)
   jobTemplate:
     spec:
       template:
         spec:
-          restartPolicy: OnFailure
           containers:
           - name: backup
             image: backup-tool:v1
-            command: ["/bin/sh"]
-            args: ["-c", "backup-script.sh"]
-  successfulJobsHistoryLimit: 3  # Keep last 3 successful
-  failedJobsHistoryLimit: 1      # Keep last 1 failed
 ```
 
-```bash
-# Create CronJob
-kubectl apply -f backup-cronjob.yaml
-
-# View CronJobs
-kubectl get cronjobs
-
-# View Jobs created by CronJob
-kubectl get jobs
-
-# Manually trigger CronJob
-kubectl create job backup-manual --from=cronjob/backup-job
-
-# Suspend CronJob
-kubectl patch cronjob backup-job -p '{"spec":{"suspend":true}}'
-
-# Resume CronJob
-kubectl patch cronjob backup-job -p '{"spec":{"suspend":false}}'
+**Cron schedule decoder:**
 ```
-
-**Cron Schedule Format:**
-```
-# ┌───────────── minute (0 - 59)
-# │ ┌───────────── hour (0 - 23)
-# │ │ ┌───────────── day of month (1 - 31)
-# │ │ │ ┌───────────── month (1 - 12)
-# │ │ │ │ ┌───────────── day of week (0 - 6) (Sunday=0)
-# │ │ │ │ │
-# * * * * *
-
-Examples:
-"0 * * * *"      # Every hour
-"*/15 * * * *"   # Every 15 minutes
-"0 2 * * *"      # Daily at 2 AM
-"0 2 * * 0"      # Weekly on Sunday at 2 AM
-"0 2 1 * *"      # Monthly on 1st at 2 AM
-```
-
-### 1.6 Workload Comparison
-
-| Workload | Use Case | Pod Names | Scaling | Storage | Updates |
-|----------|----------|-----------|---------|---------|---------|
-| **Deployment** | Stateless apps | Random | Easy | Ephemeral | Rolling, Recreate |
-| **ReplicaSet** | Low-level control | Random | Manual | Ephemeral | None (manual) |
-| **StatefulSet** | Stateful apps | Ordered | Ordered | Persistent | Rolling, OnDelete |
-| **DaemonSet** | Node agents | Per-node | Automatic | Host or ephemeral | Rolling, OnDelete |
-| **Job** | Batch tasks | Job-based | Fixed | Ephemeral | N/A |
-| **CronJob** | Scheduled tasks | Job-based | Per schedule | Ephemeral | N/A |
-
-**Decision Tree:**
-
-```
-Need to run on all nodes?
-├─ Yes → DaemonSet
-└─ No
-   ├─ Need stable identity/storage?
-   │  └─ Yes → StatefulSet
-   └─ No
-      ├─ Run to completion?
-      │  ├─ Once → Job
-      │  └─ Scheduled → CronJob
-      └─ Long-running → Deployment
+ ┌─ minute (0-59)
+ │ ┌─ hour (0-23)
+ │ │ ┌─ day of month (1-31)
+ │ │ │ ┌─ month (1-12)
+ │ │ │ │ ┌─ day of week (0-6, Sunday=0)
+ * * * * *
+ 
+ "*/15 * * * *"  = Every 15 minutes (for the impatient)
+ "0 2 * * *"     = Daily at 2 AM (graveyard shift)
+ "0 0 1 * *"     = Monthly, 1st day (rent day!)
 ```
 
 ---
 
-## 2. Scheduling
+### Decision Tree: Which Workload?
 
-The Kubernetes scheduler assigns pods to nodes based on resource requirements, constraints, and policies.
-
-### 2.1 Node Selectors
-
-Simplest way to constrain pods to nodes with specific labels.
-
-**Label a Node:**
-```bash
-# Add label to node
-kubectl label nodes node1 disktype=ssd
-
-# View node labels
-kubectl get nodes --show-labels
-
-# Remove label
-kubectl label nodes node1 disktype-
+```
+Running on ALL nodes? 
+├─ Yes → DaemonSet (the stalker)
+└─ No
+   ├─ Needs stable identity/storage?
+   │  └─ Yes → StatefulSet (the clingy one)
+   └─ No
+      ├─ Run to completion?
+      │  ├─ Once → Job (one-night stand)
+      │  └─ Scheduled → CronJob (committed relationship)
+      └─ Long-running → Deployment (marriage material)
 ```
 
-**Use Node Selector:**
+---
+
+## Scheduling
+
+*Because not all nodes are created equal*
+
+### Node Selectors - The Simple Filter
+
+**For:** "I only want to run on fancy SSD nodes"
+
 ```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: nginx
 spec:
   nodeSelector:
-    disktype: ssd  # Only schedule on nodes with this label
-  containers:
-  - name: nginx
-    image: nginx
+    disktype: ssd  # Picky, aren't we?
 ```
-
-**Common Use Cases:**
-```yaml
-# GPU nodes
-nodeSelector:
-  accelerator: nvidia-tesla-v100
-
-# High-memory nodes
-nodeSelector:
-  node.kubernetes.io/instance-type: m5.8xlarge
-
-# Availability zone
-nodeSelector:
-  topology.kubernetes.io/zone: us-east-1a
-```
-
-**Limitations:**
-- Only exact matches (no OR/NOT logic)
-- Cannot express preferences
-- → Use Node Affinity for complex rules
-
-### 2.2 Node Affinity
-
-More expressive than nodeSelector, supports required and preferred rules.
-
-#### Required vs Preferred
-
-**Required:** Must match (hard constraint)
-**Preferred:** Try to match (soft constraint)
-
-#### Node Affinity Examples
-
-**Required Affinity:**
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: with-node-affinity
-spec:
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: disktype
-            operator: In
-            values:
-            - ssd
-            - nvme
-  containers:
-  - name: nginx
-    image: nginx
-```
-
-**Preferred Affinity:**
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: with-node-affinity
-spec:
-  affinity:
-    nodeAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-      - weight: 100  # Higher weight = stronger preference (1-100)
-        preference:
-          matchExpressions:
-          - key: disktype
-            operator: In
-            values:
-            - ssd
-      - weight: 50
-        preference:
-          matchExpressions:
-          - key: cpu-type
-            operator: In
-            values:
-            - high-performance
-  containers:
-  - name: nginx
-    image: nginx
-```
-
-**Combined Required and Preferred:**
-```yaml
-spec:
-  affinity:
-    nodeAffinity:
-      # MUST be in us-east-1a or us-east-1b
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: topology.kubernetes.io/zone
-            operator: In
-            values:
-            - us-east-1a
-            - us-east-1b
-      # PREFER ssd over hdd
-      preferredDuringSchedulingIgnoredDuringExecution:
-      - weight: 100
-        preference:
-          matchExpressions:
-          - key: disktype
-            operator: In
-            values:
-            - ssd
-```
-
-**Operators:**
-- `In` - Label value in list
-- `NotIn` - Label value not in list
-- `Exists` - Label key exists (any value)
-- `DoesNotExist` - Label key doesn't exist
-- `Gt` - Label value greater than (integer)
-- `Lt` - Label value less than (integer)
-
-**Examples:**
-```yaml
-# Node has GPU
-- key: accelerator
-  operator: Exists
-
-# Node is NOT spot instance
-- key: node.kubernetes.io/instance-lifecycle
-  operator: NotIn
-  values:
-  - spot
-
-# Node has more than 8 CPUs
-- key: node.kubernetes.io/cpu-count
-  operator: Gt
-  values:
-  - "8"
-```
-
-### 2.3 Taints and Tolerations
-
-Control which pods can be scheduled on which nodes (inverse of node affinity).
-
-#### Understanding Taints
-
-**Taint:** Applied to nodes to repel pods
-**Toleration:** Applied to pods to tolerate (allow) taints
-
-```
-Node with taint → Repels all pods without toleration
-Pod with toleration → Can be scheduled on tainted node
-```
-
-#### Taint Effects
-
-1. **NoSchedule:** Pods without toleration won't be scheduled
-2. **PreferNoSchedule:** Avoid scheduling if possible (soft)
-3. **NoExecute:** Evict existing pods without toleration
-
-#### Adding Taints
 
 ```bash
-# Add taint to node
-kubectl taint nodes node1 key=value:NoSchedule
-
-# Examples:
-kubectl taint nodes node1 dedicated=gpu:NoSchedule
-kubectl taint nodes node1 environment=production:NoSchedule
-kubectl taint nodes node1 maintenance=true:NoExecute
-
-# View node taints
-kubectl describe node node1 | grep Taints
-
-# Remove taint (note the minus sign)
-kubectl taint nodes node1 key=value:NoSchedule-
-kubectl taint nodes node1 dedicated-  # Remove all taints with key
+# Label your nodes first
+kubectl label nodes node1 disktype=ssd
+kubectl label nodes node2 disktype=hdd  # The budget option
 ```
 
-#### Pod Tolerations
+---
+
+### Node Affinity - The Sophisticated Filter
+
+**For:** Complex requirements with preferences
 
 ```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: gpu-pod
+spec:
+  affinity:
+    nodeAffinity:
+      # MUST have (hard requirement)
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disktype
+            operator: In
+            values:
+            - ssd
+            - nvme  # Accept either, we're flexible
+      # PREFER (soft suggestion)
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100  # "Really want this"
+        preference:
+          matchExpressions:
+          - key: gpu
+            operator: Exists
+```
+
+**Translation:** "I MUST have SSD/NVMe, but I'd REALLY PREFER a GPU too. Pretty please? 🥺"
+
+---
+
+### Taints & Tolerations - The Bouncer System
+
+**Taint:** "Get lost!" (applied to nodes)  
+**Toleration:** "But I'm on the list!" (applied to pods)
+
+```bash
+# Taint a node (node becomes picky)
+kubectl taint nodes gpu-node1 dedicated=gpu:NoSchedule
+
+# Only pods with this toleration can schedule there
+```
+
+```yaml
 spec:
   tolerations:
   - key: "dedicated"
     operator: "Equal"
     value: "gpu"
-    effect: "NoSchedule"
-  containers:
-  - name: cuda-app
-    image: nvidia/cuda:11.0
+    effect: "NoSchedule"  # "I have a VIP pass"
 ```
 
-**Toleration Operators:**
+**Taint Effects:**
+- `NoSchedule` - "No new pods allowed" (existing ones stay)
+- `PreferNoSchedule` - "Please don't, but if you must..." (soft)
+- `NoExecute` - "EVERYONE OUT!" (evicts existing pods)
 
-**Equal (default):**
-```yaml
-tolerations:
-- key: "key1"
-  operator: "Equal"
-  value: "value1"
-  effect: "NoSchedule"
-```
-
-**Exists (wildcard):**
-```yaml
-# Tolerate any value for this key
-tolerations:
-- key: "key1"
-  operator: "Exists"
-  effect: "NoSchedule"
-
-# Tolerate all taints (any key/value)
-tolerations:
-- operator: "Exists"
-```
-
-**Tolerate NoExecute with grace period:**
-```yaml
-tolerations:
-- key: "node.kubernetes.io/unreachable"
-  operator: "Exists"
-  effect: "NoExecute"
-  tolerationSeconds: 3600  # Stay for 1 hour before eviction
-```
-
-#### Common Use Cases
-
-**1. Dedicated Nodes (GPU, high-memory):**
+**Common use case:** GPU nodes
 ```bash
-# Taint GPU nodes
-kubectl taint nodes gpu-node1 dedicated=gpu:NoSchedule
+# Taint GPU nodes so only ML workloads use them
+kubectl taint nodes gpu-node dedicated=gpu:NoSchedule
 
-# Only GPU workloads tolerate this
-tolerations:
-- key: "dedicated"
-  value: "gpu"
-  effect: "NoSchedule"
+# Regular apps: "Can't sit here"
+# ML apps with toleration: "Actually, this is my seat"
 ```
 
-**2. Production vs Non-Production:**
-```bash
-# Taint production nodes
-kubectl taint nodes prod-node1 environment=production:NoSchedule
+---
 
-# Production pods tolerate
-tolerations:
-- key: "environment"
-  value: "production"
-  effect: "NoSchedule"
-```
+### Pod Affinity - The Social Butterfly
 
-**3. Node Maintenance:**
-```bash
-# Evict all pods for maintenance
-kubectl taint nodes node1 maintenance=true:NoExecute
-
-# Critical pods tolerate
-tolerations:
-- key: "maintenance"
-  operator: "Exists"
-  effect: "NoExecute"
-  tolerationSeconds: 3600
-```
-
-**4. Control Plane Nodes:**
-```yaml
-# Default taint on control plane nodes
-# Most pods cannot schedule there
-tolerations:
-- key: "node-role.kubernetes.io/control-plane"
-  effect: "NoSchedule"
-```
-
-### 2.4 Pod Affinity and Anti-Affinity
-
-Control pod placement relative to other pods.
-
-#### Pod Affinity
-
-Schedule pods close to other pods (same node/zone/rack).
+**Use when:** You want pods to be BFFs (sit together)
 
 ```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: web-server
 spec:
   affinity:
     podAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
       - labelSelector:
-          matchExpressions:
-          - key: app
-            operator: In
-            values:
-            - cache
+          matchLabels:
+            app: cache
         topologyKey: kubernetes.io/hostname  # Same node
-  containers:
-  - name: nginx
-    image: nginx
 ```
 
-**Use Cases:**
-- Co-locate web servers with cache (reduce latency)
-- Place related microservices together
-- Group pods in same availability zone
+**Translation:** "Schedule me on the same node as the cache. We're inseparable! 💕"
 
-#### Pod Anti-Affinity
+---
 
-Schedule pods away from other pods (different nodes/zones).
+### Pod Anti-Affinity - The Introvert
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: web
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: web
-  template:
-    metadata:
-      labels:
-        app: web
-    spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - web
-            topologyKey: kubernetes.io/hostname  # Different nodes
-      containers:
-      - name: nginx
-        image: nginx
-```
+**Use when:** You want pods to avoid each other (spread out)
 
-**Use Cases:**
-- Spread replicas across nodes (high availability)
-- Avoid resource contention
-- Distribute load
-
-**Topology Keys:**
-```yaml
-# Same/different node
-topologyKey: kubernetes.io/hostname
-
-# Same/different availability zone
-topologyKey: topology.kubernetes.io/zone
-
-# Same/different region
-topologyKey: topology.kubernetes.io/region
-
-# Custom topology
-topologyKey: rack
-```
-
-**Preferred Anti-Affinity (soft):**
 ```yaml
 spec:
   affinity:
     podAntiAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-      - weight: 100
-        podAffinityTerm:
-          labelSelector:
-            matchExpressions:
-            - key: app
-              operator: In
-              values:
-              - web
-          topologyKey: kubernetes.io/hostname
-```
-
-### 2.5 Topology Spread Constraints
-
-Evenly distribute pods across topology domains (zones, nodes, racks).
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: web
-spec:
-  replicas: 9
-  selector:
-    matchLabels:
-      app: web
-  template:
-    metadata:
-      labels:
-        app: web
-    spec:
-      topologySpreadConstraints:
-      - maxSkew: 1  # Max difference between zones
-        topologyKey: topology.kubernetes.io/zone
-        whenUnsatisfiable: DoNotSchedule  # or ScheduleAnyway
-        labelSelector:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
           matchLabels:
             app: web
-      containers:
-      - name: nginx
-        image: nginx
+        topologyKey: kubernetes.io/hostname  # Different nodes
 ```
 
-**How it works:**
-- `maxSkew: 1` - Zones can differ by at most 1 pod
-- With 9 replicas and 3 zones → 3 pods per zone
+**Translation:** "Don't put me near another web pod. I need personal space! 😤"
 
-**Multiple Constraints:**
-```yaml
-topologySpreadConstraints:
-# Spread across zones (strict)
-- maxSkew: 1
-  topologyKey: topology.kubernetes.io/zone
-  whenUnsatisfiable: DoNotSchedule
-  labelSelector:
-    matchLabels:
-      app: web
-# Spread across nodes (best effort)
-- maxSkew: 2
-  topologyKey: kubernetes.io/hostname
-  whenUnsatisfiable: ScheduleAnyway
-  labelSelector:
-    matchLabels:
-      app: web
-```
-
-### 2.6 Manual Scheduling
-
-Bypass scheduler and assign pod to specific node.
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: manual-pod
-spec:
-  nodeName: node1  # Directly assign to node1
-  containers:
-  - name: nginx
-    image: nginx
-```
-
-**Use Cases:**
-- Testing
-- Troubleshooting
-- Special hardware requirements
-
-**⚠️ Warning:** Bypasses resource checks, taints, and affinity rules.
+**Why?** High availability! If one node dies, others survive.
 
 ---
 
-## 3. Resource Management
+## Resource Management
 
-Proper resource management ensures efficient cluster utilization and application performance.
+*Don't be a resource hog*
 
-### 3.1 Resource Requests and Limits
-
-#### Understanding Requests
-
-**Request:** Guaranteed resources for a container
-
-**Scheduler uses requests to:**
-- Find nodes with sufficient resources
-- Decide pod placement
-
-**Kubelet uses requests to:**
-- Reserve resources on node
-- Prevent resource overcommitment
-
-#### Understanding Limits
-
-**Limit:** Maximum resources a container can use
-
-**What happens when limit is reached:**
-- **CPU:** Throttling (container slowed down)
-- **Memory:** OOMKilled (container terminated)
-
-#### Resource Units
-
-**CPU:**
-- `1` or `1000m` = 1 CPU core
-- `500m` = 0.5 CPU core (half a core)
-- `100m` = 0.1 CPU core (10% of a core)
-
-**Memory:**
-- `128Mi` = 128 mebibytes (binary)
-- `128M` = 128 megabytes (decimal)
-- `1Gi` = 1 gibibyte
-- `1G` = 1 gigabyte
-
-**Common Units:**
-```yaml
-# CPU
-cpu: "1"      # 1 core
-cpu: "500m"   # 0.5 core
-cpu: "100m"   # 0.1 core
-
-# Memory
-memory: "128Mi"   # 128 MiB
-memory: "1Gi"     # 1 GiB
-memory: "512Mi"   # 512 MiB
-```
-
-#### Setting Requests and Limits
+### Requests vs Limits - The Social Contract
 
 ```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: resource-demo
-spec:
-  containers:
-  - name: app
-    image: nginx
-    resources:
-      requests:
-        memory: "64Mi"
-        cpu: "250m"
-      limits:
-        memory: "128Mi"
-        cpu: "500m"
-```
-
-**Best Practices:**
-
-```yaml
-# Production application
 resources:
   requests:
-    memory: "256Mi"  # Minimum needed
-    cpu: "200m"
+    memory: "256Mi"  # "I pinky promise I need this"
+    cpu: "200m"      # (used for scheduling)
   limits:
-    memory: "512Mi"  # 2x requests (some headroom)
-    cpu: "1000m"     # Allow bursting
-
-# Background job
-resources:
-  requests:
-    memory: "128Mi"
-    cpu: "100m"
-  limits:
-    memory: "256Mi"
-    cpu: "200m"      # Limit bursting
-
-# Memory-intensive app
-resources:
-  requests:
-    memory: "2Gi"
-    cpu: "500m"
-  limits:
-    memory: "4Gi"    # Prevent OOM
-    cpu: "2000m"
+    memory: "512Mi"  # "Don't let me use more than this"
+    cpu: "500m"      # (CPU = throttle, Memory = OOMKill)
 ```
 
-**Container with no limits (not recommended):**
+**What happens:**
+- **Request:** Scheduler finds node with this much free
+- **Limit:** Container gets cut off at this point
+  - CPU limit → Throttling (slow but alive)
+  - Memory limit → OOMKilled (dead) 💀
+
+**CPU Units:**
 ```yaml
-resources:
-  requests:
-    memory: "256Mi"
-    cpu: "200m"
-  # No limits - can use unlimited resources
+cpu: "1"      # 1 full core (luxury!)
+cpu: "500m"   # 0.5 core (half caff)
+cpu: "100m"   # 0.1 core (decaf)
 ```
 
-**Multiple Containers:**
+**Memory Units:**
 ```yaml
-spec:
-  containers:
-  - name: app
-    image: app:v1
-    resources:
-      requests:
-        memory: "256Mi"
-        cpu: "200m"
-      limits:
-        memory: "512Mi"
-        cpu: "500m"
-  - name: sidecar
-    image: sidecar:v1
-    resources:
-      requests:
-        memory: "64Mi"
-        cpu: "50m"
-      limits:
-        memory: "128Mi"
-        cpu: "100m"
-  # Total pod request: 320Mi memory, 250m CPU
-  # Total pod limit: 640Mi memory, 600m CPU
+memory: "1Gi"    # 1 gibibyte (1024³ bytes)
+memory: "1G"     # 1 gigabyte (1000³ bytes)
+memory: "128Mi"  # 128 mebibytes (most common)
 ```
 
-### 3.2 Quality of Service (QoS) Classes
+---
 
-Kubernetes assigns QoS class to pods based on resources. Determines eviction priority.
+### QoS Classes - The Caste System
 
-**QoS Classes (highest to lowest priority):**
+Kubernetes assigns priority based on resources:
 
-**1. Guaranteed (highest priority)**
-
-Requirements:
-- Every container has CPU and memory requests
-- Requests equal limits
-
+**1. Guaranteed (First Class)** 🥇
+- Requests = Limits for ALL resources
+- Last to be evicted
 ```yaml
 resources:
   requests:
     memory: "256Mi"
     cpu: "500m"
   limits:
-    memory: "256Mi"  # Equal to request
-    cpu: "500m"      # Equal to request
+    memory: "256Mi"  # Same!
+    cpu: "500m"      # Same!
 ```
 
-**Characteristics:**
-- Never evicted unless exceeding limits
-- Best performance guarantees
-- Use for critical workloads
-
-**2. Burstable (medium priority)**
-
-Requirements:
-- At least one container has request or limit
-- Requests not equal to limits
-
+**2. Burstable (Economy Plus)** 🥈
+- Has requests/limits, but not equal
+- Middle priority
 ```yaml
 resources:
   requests:
     memory: "128Mi"
-    cpu: "200m"
   limits:
-    memory: "256Mi"  # Different from request
-    cpu: "500m"      # Different from request
+    memory: "512Mi"  # Can burst!
 ```
 
-**Characteristics:**
-- Evicted if node runs out of resources
-- Can burst above requests
-- Use for most workloads
-
-**3. BestEffort (lowest priority)**
-
-Requirements:
-- No requests or limits set
-
-```yaml
-# No resources specified
-containers:
-- name: app
-  image: nginx
-```
-
-**Characteristics:**
+**3. BestEffort (Standby)** 🥉
+- No requests or limits
 - First to be evicted
-- No guarantees
-- Use for non-critical, batch jobs
-
-**Check Pod QoS:**
-```bash
-kubectl get pod <pod-name> -o jsonpath='{.status.qosClass}'
-kubectl describe pod <pod-name> | grep QoS
+```yaml
+# Nothing specified = "YOLO"
 ```
 
-**Eviction Order:**
-1. BestEffort pods (lowest priority)
-2. Burstable pods exceeding requests
-3. Burstable pods within requests
-4. Guaranteed pods (last resort)
+**Check QoS:**
+```bash
+kubectl get pod my-pod -o jsonpath='{.status.qosClass}'
+```
 
-### 3.3 LimitRanges
+---
 
-Set default and constrain resource values per namespace.
+### LimitRange - The Namespace Cop
+
+**For:** "No one gets more than X in this namespace!"
 
 ```yaml
 apiVersion: v1
 kind: LimitRange
 metadata:
-  name: mem-cpu-limit-range
-  namespace: dev
+  name: mem-limit-range
 spec:
   limits:
-  - max:  # Max per container
-      memory: "1Gi"
-      cpu: "1000m"
-    min:  # Min per container
-      memory: "64Mi"
-      cpu: "100m"
-    default:  # Default limits (if not specified)
-      memory: "256Mi"
-      cpu: "500m"
-    defaultRequest:  # Default requests (if not specified)
-      memory: "128Mi"
-      cpu: "200m"
+  - max:
+      memory: "1Gi"    # "Don't be greedy"
+    min:
+      memory: "64Mi"   # "But don't be cheap"
+    default:
+      memory: "256Mi"  # "If you don't specify, you get this"
     type: Container
-  - max:  # Max per pod
-      memory: "2Gi"
-      cpu: "2000m"
-    type: Pod
 ```
 
-```bash
-# Create LimitRange
-kubectl apply -f limitrange.yaml
+---
 
-# View LimitRanges
-kubectl get limitranges -n dev
-kubectl describe limitrange mem-cpu-limit-range -n dev
-```
+### ResourceQuota - The Accountant
 
-**Use Cases:**
-- Prevent resource hogging
-- Set sensible defaults
-- Enforce resource policies
-
-### 3.4 ResourceQuotas
-
-Limit aggregate resource consumption per namespace.
+**For:** "The entire namespace can't use more than X"
 
 ```yaml
 apiVersion: v1
 kind: ResourceQuota
 metadata:
   name: compute-quota
-  namespace: dev
 spec:
   hard:
-    # Compute resources
-    requests.cpu: "10"
-    requests.memory: "20Gi"
-    limits.cpu: "20"
-    limits.memory: "40Gi"
-    
-    # Object counts
-    pods: "50"
-    services: "10"
-    persistentvolumeclaims: "20"
-    
-    # Storage
-    requests.storage: "100Gi"
+    requests.cpu: "10"        # Total CPU requests
+    requests.memory: "20Gi"   # Total memory requests
+    pods: "50"                # Max 50 pods
+    services: "10"            # Max 10 services
 ```
 
+**Check quota:**
 ```bash
-# Create ResourceQuota
-kubectl apply -f resourcequota.yaml
-
-# View quotas
-kubectl get resourcequota -n dev
-kubectl describe resourcequota compute-quota -n dev
-
-# Check usage
-kubectl get resourcequota compute-quota -n dev -o yaml
-```
-
-**Example with Object Counts:**
-```yaml
-apiVersion: v1
-kind: ResourceQuota
-metadata:
-  name: object-quota
-  namespace: dev
-spec:
-  hard:
-    configmaps: "10"
-    secrets: "10"
-    services.loadbalancers: "2"
-    services.nodeports: "5"
-```
-
-**Scope-based Quotas:**
-```yaml
-apiVersion: v1
-kind: ResourceQuota
-metadata:
-  name: priority-quota
-  namespace: dev
-spec:
-  hard:
-    pods: "10"
-  scopeSelector:
-    matchExpressions:
-    - operator: In
-      scopeName: PriorityClass
-      values: ["high"]
-```
-
-### 3.5 Resource Management Best Practices
-
-**1. Always Set Requests:**
-```yaml
-# ✅ Good
-resources:
-  requests:
-    memory: "256Mi"
-    cpu: "200m"
-
-# ❌ Bad
-resources: {}
-```
-
-**2. Set Limits for Memory:**
-```yaml
-# ✅ Good - Prevent OOM killing other pods
-resources:
-  requests:
-    memory: "256Mi"
-  limits:
-    memory: "512Mi"
-
-# ⚠️ Acceptable - But monitor closely
-resources:
-  requests:
-    memory: "256Mi"
-  # No limit
-```
-
-**3. CPU Limits (Careful):**
-```yaml
-# ✅ Good for predictable workloads
-resources:
-  requests:
-    cpu: "200m"
-  limits:
-    cpu: "500m"
-
-# ✅ Also good - Allow bursting
-resources:
-  requests:
-    cpu: "200m"
-  # No CPU limit - can burst to node capacity
-```
-
-**4. Start Conservative:**
-```yaml
-# Initial deployment
-resources:
-  requests:
-    memory: "128Mi"
-    cpu: "100m"
-  limits:
-    memory: "256Mi"
-    cpu: "200m"
-
-# Monitor and adjust based on actual usage
-```
-
-**5. Use Monitoring:**
-```bash
-# Check actual usage
-kubectl top pod <pod-name>
-kubectl top node
-
-# Check over time
-# Use Prometheus, Grafana, or vendor tools
-```
-
-**6. Profile Applications:**
-```yaml
-# After profiling, right-size resources
-resources:
-  requests:
-    memory: "384Mi"  # Based on P95 usage
-    cpu: "300m"
-  limits:
-    memory: "512Mi"  # 1.3x request (headroom)
-    cpu: "600m"
+kubectl describe resourcequota -n dev
+# Shows: Used vs Hard limit
 ```
 
 ---
 
-## 4. Autoscaling
+## Autoscaling
 
-Automatically adjust workload replicas or resources based on metrics.
+*Set it and forget it (mostly)*
 
-### 4.1 Horizontal Pod Autoscaler (HPA)
+### HPA - Horizontal Pod Autoscaler
 
-Automatically scales pod replicas based on CPU, memory, or custom metrics.
+**For:** "Add more pods when busy, remove when idle"
 
-#### Prerequisites
-
-**1. Metrics Server (required):**
-```bash
-# Install metrics-server
-kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-
-# Verify metrics-server
-kubectl get deployment metrics-server -n kube-system
-kubectl top nodes
-kubectl top pods -A
-```
-
-**2. Resource Requests (required):**
-```yaml
-# Deployment must have resource requests
-spec:
-  template:
-    spec:
-      containers:
-      - name: app
-        resources:
-          requests:
-            cpu: "200m"  # Required for CPU-based HPA
-```
-
-#### Creating an HPA
-
-**Using kubectl:**
-```bash
-# Autoscale deployment based on CPU
-kubectl autoscale deployment nginx --min=2 --max=10 --cpu-percent=80
-
-# View HPA
-kubectl get hpa
-
-# Describe HPA
-kubectl describe hpa nginx
-```
-
-**Using YAML (CPU):**
 ```yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: nginx-hpa
+  name: my-app-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: nginx
-  minReplicas: 2
-  maxReplicas: 10
+    name: my-app
+  minReplicas: 3   # Never go below this (HA!)
+  maxReplicas: 20  # Emergency brake
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 80  # Target 80% CPU
+        averageUtilization: 70  # Keep it at 70% CPU
 ```
 
-**Memory-based HPA:**
-```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: nginx-hpa
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: nginx
-  minReplicas: 2
-  maxReplicas: 10
-  metrics:
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 75  # Target 75% memory
+**Quick version:**
+```bash
+kubectl autoscale deployment my-app --min=3 --max=10 --cpu-percent=80
 ```
 
-**Multiple Metrics (CPU and Memory):**
+**How it works:**
+1. Metrics server collects CPU usage
+2. HPA calculates: `desiredReplicas = currentReplicas × (currentCPU / targetCPU)`
+3. If busy → add pods
+4. If idle → remove pods
+5. Repeat every 15 seconds
+
+**Watch it work:**
+```bash
+kubectl get hpa -w  # Watch mode (like reality TV)
+```
+
+---
+
+### Advanced HPA - The Power User
+
 ```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: nginx-hpa
 spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: nginx
-  minReplicas: 3
-  maxReplicas: 20
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
-        type: Utilization
         averageUtilization: 70
   - type: Resource
     resource:
       name: memory
       target:
-        type: Utilization
         averageUtilization: 80
-  # HPA scales if ANY metric exceeds target
-```
-
-#### HPA Based on Custom Metrics
-
-**Example: Requests per Second**
-```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: nginx-hpa
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: nginx
-  minReplicas: 2
-  maxReplicas: 20
-  metrics:
-  - type: Pods
-    pods:
-      metric:
-        name: http_requests_per_second
-      target:
-        type: AverageValue
-        averageValue: "1000"  # 1000 req/s per pod
-```
-
-**Requires:**
-- Custom metrics API (Prometheus Adapter, Datadog, etc.)
-- Application exposing metrics
-
-#### HPA Behavior Configuration
-
-Control scale-up and scale-down behavior.
-
-```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: nginx-hpa
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: nginx
-  minReplicas: 2
-  maxReplicas: 20
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
   behavior:
     scaleDown:
       stabilizationWindowSeconds: 300  # Wait 5 min before scaling down
       policies:
-      - type: Percent
-        value: 50  # Max 50% of pods at a time
-        periodSeconds: 60
       - type: Pods
-        value: 2  # Max 2 pods at a time
-        periodSeconds: 60
-      selectPolicy: Min  # Use the most conservative policy
+        value: 1
+        periodSeconds: 60  # Max 1 pod per minute (slow and steady)
     scaleUp:
-      stabilizationWindowSeconds: 0  # Scale up immediately
       policies:
       - type: Percent
-        value: 100  # Max 100% (double) at a time
+        value: 100  # Can double immediately (panic mode!)
         periodSeconds: 30
-      - type: Pods
-        value: 4  # Max 4 pods at a time
-        periodSeconds: 30
-      selectPolicy: Max  # Use the most aggressive policy
 ```
 
-**Monitoring HPA:**
-```bash
-# Watch HPA status
-kubectl get hpa -w
+**Translation:** "Scale up fast, scale down slow. Like a caffeinated snail on the way down."
 
-# View HPA events
-kubectl describe hpa nginx-hpa
+---
 
-# Check current metrics
-kubectl get hpa nginx-hpa -o yaml
+### VPA - Vertical Pod Autoscaler
 
-# View pod count over time
-kubectl get deployment nginx -w
-```
+**For:** "Adjust resource requests automatically"
 
-**Testing HPA:**
-```bash
-# Generate load
-kubectl run -it --rm load-generator --image=busybox -- /bin/sh
-# Inside container:
-while true; do wget -q -O- http://nginx-service; done
-
-# Watch HPA scale up
-kubectl get hpa nginx-hpa -w
-```
-
-### 4.2 Vertical Pod Autoscaler (VPA)
-
-Automatically adjusts CPU and memory requests/limits.
-
-**⚠️ Note:** VPA requires separate installation and can conflict with HPA on CPU/memory.
+**Warning:** ⚠️ Separate installation required. Can conflict with HPA on CPU/memory.
 
 ```yaml
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
-  name: nginx-vpa
+  name: my-app-vpa
 spec:
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: nginx
+    name: my-app
   updatePolicy:
-    updateMode: "Auto"  # or "Initial", "Recreate", "Off"
-  resourcePolicy:
-    containerPolicies:
-    - containerName: nginx
-      minAllowed:
-        cpu: "100m"
-        memory: "50Mi"
-      maxAllowed:
-        cpu: "2"
-        memory: "2Gi"
+    updateMode: "Auto"  # YOLO mode
 ```
 
-### 4.3 Cluster Autoscaler
-
-Automatically adds/removes nodes based on pod scheduling needs.
-
-**Cloud-specific implementation:**
-- AWS: Cluster Autoscaler for Auto Scaling Groups
-- GCP: Cluster Autoscaler for Instance Groups
-- Azure: Cluster Autoscaler for Scale Sets
-
-**Behavior:**
-- Scales up when pods fail to schedule (insufficient resources)
-- Scales down when nodes are underutilized (<50% for 10 minutes)
-
-### 4.4 Autoscaling Best Practices
-
-**1. Start with HPA:**
-```yaml
-# Most applications benefit from horizontal scaling
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: app-hpa
-spec:
-  minReplicas: 3  # Always maintain minimum for HA
-  maxReplicas: 20
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-```
-
-**2. Set Conservative Minimums:**
-```yaml
-minReplicas: 3  # Not 1 - ensure high availability
-```
-
-**3. Set Realistic Maximums:**
-```yaml
-maxReplicas: 20  # Based on load tests and cost limits
-```
-
-**4. Configure Scale-Down Carefully:**
-```yaml
-behavior:
-  scaleDown:
-    stabilizationWindowSeconds: 300  # Prevent flapping
-    policies:
-    - type: Pods
-      value: 1
-      periodSeconds: 60  # Slow, gradual scale-down
-```
-
-**5. Monitor and Tune:**
-```bash
-# Check HPA effectiveness
-kubectl describe hpa app-hpa
-
-# Look for:
-# - Frequent scaling up/down (flapping)
-# - Hitting max replicas (increase max)
-# - Never scaling (adjust targets)
-```
-
-**6. Combine with PDB:**
-```yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: app-pdb
-spec:
-  minAvailable: 2  # Always keep 2 pods during disruptions
-  selector:
-    matchLabels:
-      app: nginx
-```
+**Reality:** Most people use HPA, not VPA. VPA is the weird cousin.
 
 ---
 
-## 5. Configuration Management
+## Configuration Management
 
-Separate configuration from application code using ConfigMaps and Secrets.
+*Separating secrets from code since 2014*
 
-### 5.1 ConfigMaps
+### ConfigMaps - The Public Board
 
-Store non-sensitive configuration data in key-value pairs.
+**For:** Non-sensitive configuration
 
-#### Creating ConfigMaps
-
-**From Literal Values:**
-```bash
-kubectl create configmap app-config \
-  --from-literal=database_url=postgres://localhost:5432/mydb \
-  --from-literal=log_level=info \
-  --from-literal=max_connections=100
-```
-
-**From File:**
-```bash
-# config.properties
-database_url=postgres://localhost:5432/mydb
-log_level=info
-max_connections=100
-
-kubectl create configmap app-config --from-file=config.properties
-```
-
-**From Directory:**
-```bash
-kubectl create configmap app-config --from-file=./config/
-```
-
-**From YAML:**
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: app-config
 data:
-  database_url: "postgres://localhost:5432/mydb"
+  database_url: "postgres://db:5432/mydb"
   log_level: "info"
   max_connections: "100"
-  # Multi-line configuration file
-  app.conf: |
+  # Even multi-line files!
+  nginx.conf: |
     server {
       listen 80;
       server_name example.com;
-      location / {
-        proxy_pass http://backend;
-      }
     }
 ```
 
+**Quick create:**
 ```bash
-kubectl apply -f configmap.yaml
+kubectl create configmap app-config \
+  --from-literal=api_url=https://api.com \
+  --from-literal=timeout=30
 ```
 
-#### Using ConfigMaps in Pods
-
-**1. Environment Variables (Individual Keys):**
+**Use in pod (environment variables):**
 ```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app
 spec:
   containers:
   - name: app
-    image: myapp:v1
-    env:
-    - name: DATABASE_URL
-      valueFrom:
-        configMapKeyRef:
-          name: app-config
-          key: database_url
-    - name: LOG_LEVEL
-      valueFrom:
-        configMapKeyRef:
-          name: app-config
-          key: log_level
-```
-
-**2. Environment Variables (All Keys):**
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app
-spec:
-  containers:
-  - name: app
-    image: myapp:v1
     envFrom:
     - configMapRef:
         name: app-config
-    # All keys become environment variables
-    # database_url → DATABASE_URL
-    # log_level → LOG_LEVEL
+    # Now DATABASE_URL, LOG_LEVEL, etc. are environment variables
 ```
 
-**3. Volume Mount (Files):**
+**Use in pod (files):**
 ```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app
 spec:
   containers:
   - name: app
-    image: myapp:v1
-    volumeMounts:
-    - name: config
-      mountPath: /etc/config
-      readOnly: true
-    # ConfigMap keys become files:
-    # /etc/config/database_url
-    # /etc/config/log_level
-    # /etc/config/app.conf
-  volumes:
-  - name: config
-    configMap:
-      name: app-config
-```
-
-**4. Volume Mount (Specific Keys):**
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app
-spec:
-  containers:
-  - name: app
-    image: myapp:v1
     volumeMounts:
     - name: config
       mountPath: /etc/config
@@ -2116,200 +614,41 @@ spec:
   - name: config
     configMap:
       name: app-config
-      items:
-      - key: app.conf
-        path: nginx.conf  # Rename file
-      # Only /etc/config/nginx.conf is created
+  # Creates: /etc/config/database_url, /etc/config/log_level, etc.
 ```
 
-**Managing ConfigMaps:**
-```bash
-# View ConfigMaps
-kubectl get configmaps
-kubectl get cm  # Short form
-
-# Describe ConfigMap
-kubectl describe configmap app-config
-
-# View ConfigMap data
-kubectl get configmap app-config -o yaml
-
-# Edit ConfigMap
-kubectl edit configmap app-config
-
-# Delete ConfigMap
-kubectl delete configmap app-config
-```
-
-#### ConfigMap Best Practices
-
-**1. Use Descriptive Names:**
-```yaml
-# ✅ Good
-name: nginx-config
-name: database-credentials
-name: app-settings-v2
-
-# ❌ Bad
-name: config
-name: data
-name: cm1
-```
-
-**2. Version ConfigMaps:**
-```yaml
-# Include version in name
-name: app-config-v2
-
-# Update deployment to use new version
-env:
-- name: CONFIG_VERSION
-  value: "v2"
-envFrom:
-- configMapRef:
-    name: app-config-v2
-```
-
-**3. Separate Concerns:**
-```yaml
-# ✅ Good - Separate ConfigMaps
-kind: ConfigMap
-metadata:
-  name: app-settings
 ---
-kind: ConfigMap
-metadata:
-  name: nginx-config
----
-kind: ConfigMap
-metadata:
-  name: database-config
 
-# ❌ Bad - One giant ConfigMap
-kind: ConfigMap
-metadata:
-  name: all-config
-```
+### Secrets - The Vault
 
-**4. Use for Non-Sensitive Data Only:**
+**For:** Sensitive data (passwords, tokens, keys)
+
+**⚠️ Important:** Secrets are base64-encoded, NOT encrypted by default! Enable encryption at rest!
+
 ```yaml
-# ✅ Good - Public configuration
-data:
-  api_endpoint: "https://api.example.com"
-  timeout: "30"
-  log_level: "info"
-
-# ❌ Bad - Sensitive data (use Secrets instead)
-data:
-  database_password: "supersecret"
-  api_key: "abc123"
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-secret
+type: Opaque
+stringData:  # Plain text (gets auto-encoded)
+  username: admin
+  password: supersecret123
 ```
 
-### 5.2 Secrets
-
-Store sensitive data (passwords, tokens, keys).
-
-**⚠️ Important:** Secrets are base64-encoded, NOT encrypted by default. Use encryption at rest.
-
-#### Creating Secrets
-
-**From Literal Values:**
+**Quick create:**
 ```bash
 kubectl create secret generic db-secret \
   --from-literal=username=admin \
   --from-literal=password=supersecret123
 ```
 
-**From Files:**
-```bash
-echo -n 'admin' > username.txt
-echo -n 'supersecret123' > password.txt
-
-kubectl create secret generic db-secret \
-  --from-file=username=username.txt \
-  --from-file=password=password.txt
-```
-
-**From YAML (base64 encoded):**
-```bash
-# Encode values
-echo -n 'admin' | base64
-# Output: YWRtaW4=
-
-echo -n 'supersecret123' | base64
-# Output: c3VwZXJzZWNyZXQxMjM=
-```
-
+**Use in pod:**
 ```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: db-secret
-type: Opaque
-data:
-  username: YWRtaW4=
-  password: c3VwZXJzZWNyZXQxMjM=
-```
-
-**From YAML (plain text, auto-encoded):**
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: db-secret
-type: Opaque
-stringData:  # Plain text, auto-encoded
-  username: admin
-  password: supersecret123
-```
-
-**Secret Types:**
-```bash
-# Generic (Opaque)
-kubectl create secret generic my-secret --from-literal=key=value
-
-# Docker registry
-kubectl create secret docker-registry regcred \
-  --docker-server=https://index.docker.io/v1/ \
-  --docker-username=user \
-  --docker-password=pass \
-  --docker-email=user@example.com
-
-# TLS
-kubectl create secret tls tls-secret \
-  --cert=path/to/tls.crt \
-  --key=path/to/tls.key
-
-# SSH
-kubectl create secret generic ssh-secret \
-  --from-file=ssh-privatekey=~/.ssh/id_rsa \
-  --type=kubernetes.io/ssh-auth
-
-# Basic auth
-kubectl create secret generic basic-auth \
-  --from-literal=username=admin \
-  --from-literal=password=secret \
-  --type=kubernetes.io/basic-auth
-```
-
-#### Using Secrets in Pods
-
-**1. Environment Variables (Individual Keys):**
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app
 spec:
   containers:
   - name: app
-    image: myapp:v1
     env:
-    - name: DB_USERNAME
-      valueFrom:
-        secretKeyRef:
-          name: db-secret
-          key: username
     - name: DB_PASSWORD
       valueFrom:
         secretKeyRef:
@@ -2317,655 +656,160 @@ spec:
           key: password
 ```
 
-**2. Environment Variables (All Keys):**
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app
-spec:
-  containers:
-  - name: app
-    image: myapp:v1
-    envFrom:
-    - secretRef:
-        name: db-secret
-```
-
-**3. Volume Mount:**
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app
-spec:
-  containers:
-  - name: app
-    image: myapp:v1
-    volumeMounts:
-    - name: secret
-      mountPath: /etc/secrets
-      readOnly: true
-    # Files created:
-    # /etc/secrets/username
-    # /etc/secrets/password
-  volumes:
-  - name: secret
-    secret:
-      secretName: db-secret
-```
-
-**4. ImagePullSecrets (Docker Registry):**
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app
-spec:
-  containers:
-  - name: app
-    image: private-registry.io/myapp:v1
-  imagePullSecrets:
-  - name: regcred
-```
-
-**Managing Secrets:**
+**Decode a secret:**
 ```bash
-# View Secrets (data is hidden)
-kubectl get secrets
-
-# Describe Secret (data is hidden)
-kubectl describe secret db-secret
-
-# View Secret data (base64 encoded)
-kubectl get secret db-secret -o yaml
-
-# Decode Secret
 kubectl get secret db-secret -o jsonpath='{.data.password}' | base64 -d
-
-# Edit Secret
-kubectl edit secret db-secret
-
-# Delete Secret
-kubectl delete secret db-secret
 ```
 
-#### Secret Best Practices
+---
 
-**1. Never Commit Secrets to Git:**
+### Secret Best Practices
+
+**DO:**
+- ✅ Enable encryption at rest
+- ✅ Use RBAC to limit access
+- ✅ Use external secret managers (Vault, AWS Secrets Manager)
+- ✅ Rotate secrets regularly
+- ✅ Mark as immutable when possible
+
+**DON'T:**
+- ❌ Commit secrets to Git (use `.gitignore`)
+- ❌ Use ConfigMaps for sensitive data
+- ❌ Give everyone access to all secrets
+- ❌ Hardcode secrets in images
+
+**Pro tip:** Use External Secrets Operator to sync from AWS/GCP/Azure secret managers. Future you will thank you!
+
+---
+
+## Cheat Sheet
+
+### Deployment Operations
 ```bash
-# .gitignore
-secrets/
-*.secret.yaml
-```
+# Create
+kubectl create deployment app --image=nginx --replicas=3
 
-**2. Use External Secret Management:**
-- AWS Secrets Manager + External Secrets Operator
-- HashiCorp Vault + Vault CSI Driver
-- Azure Key Vault + Secrets Store CSI Driver
-- Google Secret Manager
+# Scale
+kubectl scale deployment/app --replicas=5
 
-**3. Enable Encryption at Rest:**
-```yaml
-# /etc/kubernetes/encryption-config.yaml
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-- resources:
-  - secrets
-  providers:
-  - aescbc:
-      keys:
-      - name: key1
-        secret: <base64-encoded-secret>
-  - identity: {}
-```
-
-**4. Limit RBAC Access:**
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: secret-reader
-rules:
-- apiGroups: [""]
-  resources: ["secrets"]
-  resourceNames: ["db-secret"]  # Specific secrets only
-  verbs: ["get"]
-```
-
-**5. Rotate Secrets Regularly:**
-```bash
-# Update secret
-kubectl create secret generic db-secret \
-  --from-literal=password=newsecret123 \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# Restart pods to pick up new secret
-kubectl rollout restart deployment myapp
-```
-
-**6. Use Immutable Secrets:**
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: db-secret
-type: Opaque
-immutable: true  # Cannot be updated
-data:
-  password: c3VwZXJzZWNyZXQxMjM=
-```
-
-### 5.3 Immutable ConfigMaps and Secrets
-
-Prevent accidental changes to configuration.
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config
-immutable: true
-data:
-  database_url: "postgres://localhost:5432/mydb"
-```
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: db-secret
-type: Opaque
-immutable: true
-data:
-  password: c3VwZXJzZWNyZXQxMjM=
-```
-
-**Benefits:**
-- Prevent accidental updates
-- Improve cluster performance (kubelet doesn't watch for changes)
-- Require explicit ConfigMap/Secret recreation
-
-**To Update:**
-```bash
-# Delete old
-kubectl delete configmap app-config
-
-# Create new
-kubectl create configmap app-config --from-literal=key=newvalue
-
-# Restart pods
-kubectl rollout restart deployment myapp
-```
-
-### 5.4 Configuration Management Patterns
-
-**1. ConfigMap + Secret Pattern:**
-```yaml
-# ConfigMap for non-sensitive data
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config
-data:
-  database_host: "postgres.example.com"
-  database_port: "5432"
-  database_name: "mydb"
----
-# Secret for sensitive data
-apiVersion: v1
-kind: Secret
-metadata:
-  name: db-credentials
-type: Opaque
-stringData:
-  username: "admin"
-  password: "supersecret123"
----
-# Pod uses both
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app
-spec:
-  containers:
-  - name: app
-    image: myapp:v1
-    envFrom:
-    - configMapRef:
-        name: app-config
-    - secretRef:
-        name: db-credentials
-```
-
-**2. Versioned Configuration Pattern:**
-```yaml
-# v1 configuration
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config-v1
-data:
-  feature_flag: "false"
----
-# v2 configuration (blue-green deployment)
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config-v2
-data:
-  feature_flag: "true"
----
-# Deployment v1
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: app-v1
-spec:
-  replicas: 3
-  template:
-    spec:
-      containers:
-      - name: app
-        envFrom:
-        - configMapRef:
-            name: app-config-v1
----
-# Deployment v2 (new version)
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: app-v2
-spec:
-  replicas: 3
-  template:
-    spec:
-      containers:
-      - name: app
-        envFrom:
-        - configMapRef:
-            name: app-config-v2
-```
-
-**3. ConfigMap for Application Files:**
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nginx-config
-data:
-  nginx.conf: |
-    events {
-      worker_connections 1024;
-    }
-    http {
-      server {
-        listen 80;
-        location / {
-          proxy_pass http://backend:8080;
-        }
-      }
-    }
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: nginx
-spec:
-  template:
-    spec:
-      containers:
-      - name: nginx
-        image: nginx:1.21
-        volumeMounts:
-        - name: config
-          mountPath: /etc/nginx/nginx.conf
-          subPath: nginx.conf
-      volumes:
-      - name: config
-        configMap:
-          name: nginx-config
-```
-
----
-
-## 6. Quick Reference
-
-### 6.1 Essential Commands
-
-**Deployments:**
-```bash
-# Create deployment
-kubectl create deployment nginx --image=nginx:1.21 --replicas=3
-
-# Scale deployment
-kubectl scale deployment nginx --replicas=5
-
-# Update image
-kubectl set image deployment/nginx nginx=nginx:1.22
-
-# Rollout status
-kubectl rollout status deployment/nginx
-
-# Rollout history
-kubectl rollout history deployment/nginx
+# Update
+kubectl set image deployment/app nginx=nginx:1.22
 
 # Rollback
-kubectl rollout undo deployment/nginx
+kubectl rollout undo deployment/app
 
-# Autoscale
-kubectl autoscale deployment nginx --min=2 --max=10 --cpu-percent=80
+# Status
+kubectl rollout status deployment/app
+
+# History
+kubectl rollout history deployment/app
 ```
 
-**StatefulSets:**
+### Resource Viewing
 ```bash
-# Create StatefulSet
-kubectl apply -f statefulset.yaml
+# Who's using what?
+kubectl top nodes
+kubectl top pods
+kubectl top pods --sort-by=cpu
+kubectl top pods --sort-by=memory
 
-# Scale StatefulSet
-kubectl scale statefulset mysql --replicas=5
-
-# Delete StatefulSet (keep PVCs)
-kubectl delete statefulset mysql
-
-# Delete StatefulSet and PVCs
-kubectl delete statefulset mysql
-kubectl delete pvc -l app=mysql
+# QoS class
+kubectl get pod my-pod -o jsonpath='{.status.qosClass}'
 ```
 
-**DaemonSets:**
+### Node Operations
 ```bash
-# Create DaemonSet
-kubectl apply -f daemonset.yaml
-
-# Update DaemonSet
-kubectl set image ds/fluentd fluentd=fluentd:v1.15 -n kube-system
-
-# View DaemonSet pods
-kubectl get pods -l app=fluentd -o wide
-```
-
-**Jobs and CronJobs:**
-```bash
-# Create Job
-kubectl create job test --image=busybox -- /bin/sh -c "echo hello"
-
-# Create CronJob
-kubectl create cronjob backup --schedule="0 2 * * *" --image=backup-tool
-
-# Manually trigger CronJob
-kubectl create job backup-manual --from=cronjob/backup
-
-# Suspend CronJob
-kubectl patch cronjob backup -p '{"spec":{"suspend":true}}'
-```
-
-**Scheduling:**
-```bash
-# Label node
+# Label nodes
 kubectl label nodes node1 disktype=ssd
 
-# Taint node
+# Taint nodes
 kubectl taint nodes node1 key=value:NoSchedule
 
-# Remove taint
-kubectl taint nodes node1 key=value:NoSchedule-
+# Remove taint (note the minus)
+kubectl taint nodes node1 key-
 
-# View node labels and taints
+# View labels/taints
 kubectl describe node node1
 ```
 
-**Resources:**
+### ConfigMap & Secret
 ```bash
-# View resource usage
-kubectl top nodes
-kubectl top pods
-kubectl top pods -A --sort-by=cpu
-kubectl top pods -A --sort-by=memory
-
-# Check QoS class
-kubectl get pod <pod> -o jsonpath='{.status.qosClass}'
-```
-
-**ConfigMaps:**
-```bash
-# Create ConfigMap
+# ConfigMap
 kubectl create configmap app-config --from-literal=key=value
-
-# Create from file
-kubectl create configmap app-config --from-file=config.properties
-
-# View ConfigMap
 kubectl get configmap app-config -o yaml
 
-# Edit ConfigMap
-kubectl edit configmap app-config
-```
-
-**Secrets:**
-```bash
-# Create Secret
+# Secret
 kubectl create secret generic db-secret --from-literal=password=secret
-
-# Create Docker registry secret
-kubectl create secret docker-registry regcred \
-  --docker-server=registry.io \
-  --docker-username=user \
-  --docker-password=pass
-
-# View Secret (base64 encoded)
-kubectl get secret db-secret -o yaml
-
-# Decode Secret
 kubectl get secret db-secret -o jsonpath='{.data.password}' | base64 -d
 ```
 
-### 6.2 Common Patterns
+### HPA
+```bash
+# Create
+kubectl autoscale deployment app --min=2 --max=10 --cpu-percent=80
 
-**High Availability Deployment:**
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: app
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: myapp
-  template:
-    metadata:
-      labels:
-        app: myapp
-    spec:
-      # Spread across nodes
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchLabels:
-                app: myapp
-            topologyKey: kubernetes.io/hostname
-      containers:
-      - name: app
-        image: myapp:v1
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "200m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 15
-          periodSeconds: 20
-```
+# Watch
+kubectl get hpa -w
 
-**Sidecar Container Pattern:**
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app-with-sidecar
-spec:
-  containers:
-  # Main application
-  - name: app
-    image: myapp:v1
-    ports:
-    - containerPort: 8080
-    volumeMounts:
-    - name: logs
-      mountPath: /var/log/app
-  # Log collector sidecar
-  - name: log-collector
-    image: fluent-bit:latest
-    volumeMounts:
-    - name: logs
-      mountPath: /var/log/app
-      readOnly: true
-  volumes:
-  - name: logs
-    emptyDir: {}
-```
-
-**Init Container Pattern:**
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app-with-init
-spec:
-  initContainers:
-  # Run before main container
-  - name: init-db
-    image: busybox
-    command: ['sh', '-c', 'until nc -z db 5432; do echo waiting; sleep 2; done']
-  containers:
-  - name: app
-    image: myapp:v1
+# Describe
+kubectl describe hpa app
 ```
 
 ---
 
-## 7. Production Checklist
+## Production Checklist ✅
 
-### Workloads
+### Before You Deploy
 
-- [ ] **Deployments**
-  - [ ] Resource requests and limits set
-  - [ ] Multiple replicas for HA (minimum 3)
-  - [ ] Rolling update strategy configured
-  - [ ] maxSurge and maxUnavailable tuned
-  - [ ] Readiness and liveness probes configured
-  - [ ] PodDisruptionBudget defined
+**Workloads:**
+- [ ] Set resource requests/limits (don't be that person)
+- [ ] Min 3 replicas for HA (one is none, two is one, three is some)
+- [ ] Configure readiness/liveness probes (health checks are your friend)
+- [ ] Set up PodDisruptionBudget (prevent accidental outages)
 
-- [ ] **StatefulSets**
-  - [ ] Headless service created
-  - [ ] VolumeClaimTemplates configured
-  - [ ] Update strategy defined
-  - [ ] Backup strategy for PVCs
-  - [ ] Pod Management Policy set appropriately
+**Scheduling:**
+- [ ] Use node affinity for special hardware
+- [ ] Set pod anti-affinity for HA (spread the love)
+- [ ] Configure taints/tolerations for dedicated nodes
 
-- [ ] **DaemonSets**
-  - [ ] Resource limits set (prevent node exhaustion)
-  - [ ] Tolerations configured for all required nodes
-  - [ ] Update strategy defined
-  - [ ] Host path mounts secured
+**Resources:**
+- [ ] All pods have requests (scheduler needs to know!)
+- [ ] Memory limits set (prevent OOMKiller rampage)
+- [ ] LimitRanges defined per namespace (set guardrails)
+- [ ] ResourceQuotas enforced (prevent resource hogging)
 
-### Scheduling
+**Autoscaling:**
+- [ ] HPA configured (if applicable)
+- [ ] Metrics server installed (required for HPA)
+- [ ] Min replicas ≥ 3 (HA, remember?)
+- [ ] Monitoring enabled (watch it work!)
 
-- [ ] **Node Selection**
-  - [ ] Critical workloads use node affinity
-  - [ ] Taints applied to specialized nodes
-  - [ ] Tolerations configured correctly
-  - [ ] Pod anti-affinity for HA workloads
-
-- [ ] **Resource Management**
-  - [ ] All pods have resource requests
-  - [ ] Memory limits set (prevent OOM)
-  - [ ] LimitRanges defined per namespace
-  - [ ] ResourceQuotas enforced
-
-### Autoscaling
-
-- [ ] **HPA**
-  - [ ] Metrics server installed
-  - [ ] HPA configured for scalable workloads
-  - [ ] Min replicas ≥ 3 for HA
-  - [ ] Max replicas based on capacity planning
-  - [ ] Scale-down behavior configured
-  - [ ] Monitoring and alerting enabled
-
-### Configuration
-
-- [ ] **ConfigMaps**
-  - [ ] Non-sensitive data only
-  - [ ] Versioned naming convention
-  - [ ] Immutable for critical config
-  - [ ] Separated by concern
-
-- [ ] **Secrets**
-  - [ ] Encryption at rest enabled
-  - [ ] RBAC policies restrict access
-  - [ ] External secret management considered
-  - [ ] Rotation policy defined
-  - [ ] Never committed to version control
-
-### Monitoring
-
-- [ ] Resource usage monitored
-- [ ] HPA metrics tracked
-- [ ] ConfigMap/Secret changes audited
-- [ ] Pod scheduling failures alerted
-- [ ] Node resource pressure monitored
+**Configuration:**
+- [ ] Secrets encrypted at rest (not just base64!)
+- [ ] ConfigMaps versioned (no accidental updates)
+- [ ] RBAC limits secret access (least privilege)
+- [ ] Nothing committed to Git (seriously, check twice)
 
 ---
 
-## 8. Further Reading
+## Final Words of Wisdom
 
-### Official Documentation
+1. **Start simple, iterate:** Don't over-engineer on day one
+2. **Monitor everything:** You can't improve what you don't measure
+3. **Test your autoscaling:** Generate load and watch it scale
+4. **Document your decisions:** Future you will ask "Why did I do this?"
+5. **Read the error messages:** They're actually helpful (sometimes)
 
-- [Workloads](https://kubernetes.io/docs/concepts/workloads/)
-- [Scheduling, Preemption and Eviction](https://kubernetes.io/docs/concepts/scheduling-eviction/)
-- [Configuration](https://kubernetes.io/docs/concepts/configuration/)
-- [Managing Resources](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)
-- [Autoscaling](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/)
-
-### Best Practices
-
-- [Resource Management Best Practices](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)
-- [Configuration Best Practices](https://kubernetes.io/docs/concepts/configuration/overview/)
-- [Running Production Applications](https://kubernetes.io/docs/tasks/run-application/)
-
-### Tools
-
-- [Metrics Server](https://github.com/kubernetes-sigs/metrics-server)
-- [Vertical Pod Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler)
-- [External Secrets Operator](https://external-secrets.io/)
-- [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets)
-- [HashiCorp Vault](https://www.vaultproject.io/)
-
-### CKA/CKAD Preparation
-
-- [CKA Curriculum](https://github.com/cncf/curriculum)
-- [CKAD Curriculum](https://github.com/cncf/curriculum)
-- [Kubernetes Documentation](https://kubernetes.io/docs/)
+**Remember:** Kubernetes is complex, but you don't need to use every feature. Start with Deployments, add resources, configure HPA, and you're already ahead of most people!
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** February 15, 2026  
-**Author:** Sajal Jana
+**Happy Kuberneting!** 🚀
 
-**License:** This document is provided as-is for educational purposes.
+*P.S. - If something breaks, try turning it off and on again. Works 60% of the time, every time.*
+
+---
+
+**Author:** Sajal Jana  
+**Last Updated:** February 2026  
+**Disclaimer:** Humor may vary by reader. Side effects include increased understanding and occasional chuckles.
