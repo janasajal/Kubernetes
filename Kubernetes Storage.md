@@ -1,7 +1,6 @@
-# Kubernetes Storage: The Actually Fun Guide 🎢
+# Kubernetes Storage: 🎢
 
 **Author:** Sajal Jana  
-**Motto:** *"Where your data goes to live happily ever after (hopefully)"*
 
 ---
 
