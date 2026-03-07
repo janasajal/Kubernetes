@@ -1,6 +1,6 @@
 # Kubernetes Monitoring Lab: Minikube + Prometheus + Grafana on AWS EC2
 
-**Author : Sajal Jana
+> Author : Sajal Jana
 
 > **Hands-on lab documenting a complete Kubernetes monitoring setup from scratch.**  
 > Deployed on AWS EC2, using Minikube as the Kubernetes engine, Prometheus for metrics collection, and Grafana for visualization.
