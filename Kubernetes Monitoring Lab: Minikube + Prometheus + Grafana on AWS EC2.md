@@ -304,6 +304,11 @@ ubuntu  22325  kubectl port-forward svc/kube-prometheus-stack-grafana 3000:80 ..
 ubuntu  23065  kubectl port-forward svc/kube-prometheus-stack-prometheus 9090:9090 ...
 ubuntu  152204 kubectl port-forward svc/kube-prometheus-stack-alertmanager 9093:9093 ...
 ```
+<img width="2500" height="1388" alt="prometheus" src="https://github.com/user-attachments/assets/0e891240-0284-4103-b7a5-08dc90818cab" />
+
+
+<img width="2542" height="1412" alt="Screenshot 2026-03-07 162612" src="https://github.com/user-attachments/assets/eb76149d-35ac-4b28-bcf5-0f26b25d3df3" />
+
 
 ---
 
