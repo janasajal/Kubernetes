@@ -1,0 +1,1020 @@
+================================================================================
+        ELK STACK ON KUBERNETES -- HANDS-ON LAB
+        Author   : Sajal Jana
+        Platform : Minikube on AWS EC2 (Ubuntu 24.04, 2 vCPU, 8GB RAM)
+        Versions : Elasticsearch 8.5.1 | Kibana 8.5.1
+                   Logstash 8.5.1 | Filebeat 8.5.1
+================================================================================
+
+WHAT IS ELK?
+------------
+
+  Elasticsearch --> Storage & Search   : Stores logs as JSON, full-text search
+  Logstash      --> Processing Pipeline: Parse, filter, transform, forward
+  Kibana        --> Visualization      : Dashboards, search, alerting
+  Filebeat      --> Log Shipper        : Lightweight agent, runs on each node
+
+
+DATA FLOW
+---------
+
+  App Pods (stdout/stderr)
+       |
+       v
+  /var/log/containers/*.log   (on each K8s node)
+       |
+       v  Filebeat tails files, adds K8s metadata (namespace, pod, container)
+       |
+       v  --> port 5044
+  Logstash  -->  Grok parse  -->  extract log_level, service, reqId, userId
+       |
+       v  --> port 9200
+  Elasticsearch  -->  index: k8s-logs-YYYY.MM.DD
+       |
+       v
+  Kibana  -->  http://<EC2-IP>:5601
+       |
+       v
+  Your Browser
+
+
+ILM LIFECYCLE
+-------------
+
+  Day 0         Day 1         Day 7         Day 30
+  HOT      -->  WARM     -->  COLD     -->  DELETE
+  Write+Read    ReadOnly      Rare Access   Auto Removed
+  rollover      shrink        low priority
+  1d / 10GB     forcemerge
+
+
+================================================================================
+ARCHITECTURE
+================================================================================
+
+  AWS EC2 (t3.large | Ubuntu 24.04 | 2 vCPU | 8GB)
+  └── Minikube (Kubernetes v1.35.1)
+      ├── elk namespace
+      │   ├── Filebeat      (DaemonSet)   -- reads /var/log/containers
+      │   ├── Logstash      (Deployment)  -- port 5044, grok parsing
+      │   ├── Elasticsearch (StatefulSet) -- port 9200, 5Gi PVC
+      │   └── Kibana        (Deployment)  -- port 5601
+      └── sample-app namespace
+          └── log-generator (Deployment)  -- emits INFO/WARN/ERROR logs
+
+
+TOOLS & VERSIONS
+----------------
+
+  Docker     29.2.1
+  Minikube   v1.38.1
+  kubectl    v1.35.2
+  Helm       v3.20.0
+
+
+EC2 SETUP
+---------
+
+  Instance Type : t3.large (2 vCPU, 8GB RAM)
+  OS            : Ubuntu 24.04 LTS
+  Disk          : 20 GB gp3
+
+  Security Group Inbound:
+    22   TCP  --> SSH
+    5601 TCP  --> Kibana UI
+    9200 TCP  --> Elasticsearch API (optional)
+
+
+================================================================================
+PHASE 1 -- INSTALL DEPENDENCIES
+================================================================================
+
+-- Docker --
+
+  $ sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg
+  $ sudo install -m 0755 -d /etc/apt/keyrings
+  $ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+      sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  $ sudo chmod a+r /etc/apt/keyrings/docker.gpg
+  $ echo "deb [arch=$(dpkg --print-architecture) \
+      signed-by=/etc/apt/keyrings/docker.gpg] \
+      https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  $ sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+  $ sudo usermod -aG docker $USER && newgrp docker
+  $ docker --version
+    --> Docker version 29.x.x
+
+
+-- Minikube --
+
+  $ curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+  $ sudo install minikube-linux-amd64 /usr/local/bin/minikube && rm minikube-linux-amd64
+  $ minikube version
+    --> minikube version: v1.38.x
+
+
+-- kubectl --
+
+  $ curl -LO "https://dl.k8s.io/release/$(curl -Ls \
+      https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+  $ sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && rm kubectl
+  $ kubectl version --client
+    --> Client Version: v1.35.x
+
+
+-- Helm --
+
+  $ curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  $ helm version --short
+    --> v3.20.x
+
+
+-- Start Minikube --
+
+  $ minikube start \
+      --driver=docker \
+      --cpus=2 \
+      --memory=6144 \
+      --disk-size=20g \
+      --kubernetes-version=stable
+
+  Flags:
+    --driver=docker    Works on EC2 without KVM
+    --memory=6144      ELK needs minimum 4GB
+    --disk-size=20g    For images + log data
+
+
+-- Verify cluster --
+
+  $ kubectl get nodes
+    --> minikube   Ready   control-plane
+
+  $ kubectl get pods -n kube-system
+    --> All Running
+
+
+-- Create ELK namespace --
+
+  $ kubectl create namespace elk
+
+
+-- Enable metrics server --
+
+  $ minikube addons enable metrics-server
+  $ sleep 60 && kubectl top nodes
+
+
+-- Port forwards (persistent) --
+
+  $ nohup kubectl port-forward svc/elasticsearch -n elk \
+      9200:9200 --address 0.0.0.0 > /tmp/es-pf.log 2>&1 &
+
+  $ nohup kubectl port-forward svc/kibana -n elk \
+      5601:5601 --address 0.0.0.0 > /tmp/kibana-pf.log 2>&1 &
+
+  Check logs:
+    $ tail -f /tmp/es-pf.log
+    $ tail -f /tmp/kibana-pf.log
+
+
+================================================================================
+PHASE 2 -- DEPLOY ELASTICSEARCH
+================================================================================
+
+NOTE: Using raw manifests instead of Helm.
+      Elastic Helm chart v8.x enforces TLS by default and auto-injects env vars
+      that override custom settings. Raw manifests = full control.
+
+Known errors during setup:
+
+  initial_master_nodes not allowed with single-node
+    --> Helm auto-injects this var. Fixed by using raw manifests.
+
+  CgroupInfo.getMountPoint() null
+    --> ES 7.x JVM doesn't support cgroup v2 (kernel 6.x).
+        Fixed by using ES 8.x + JVM flag: -Des.cgroups.hierarchy.override=/
+
+  plaintext http on https channel
+    --> Helm sets protocol: https by default.
+        Fixed by raw manifest with explicit xpack.security.enabled: false
+
+
+-- Create elasticsearch.yaml --
+
+  $ cat > elasticsearch.yaml << 'EOF'
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: elasticsearch-config
+    namespace: elk
+  data:
+    elasticsearch.yml: |
+      cluster.name: elk-lab
+      node.name: elasticsearch-0
+      network.host: 0.0.0.0
+      discovery.type: single-node
+      xpack.security.enabled: false
+      xpack.ml.enabled: false
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: elasticsearch
+    namespace: elk
+  spec:
+    selector:
+      app: elasticsearch
+    ports:
+      - name: http
+        port: 9200
+        targetPort: 9200
+      - name: transport
+        port: 9300
+        targetPort: 9300
+  ---
+  apiVersion: apps/v1
+  kind: StatefulSet
+  metadata:
+    name: elasticsearch
+    namespace: elk
+  spec:
+    serviceName: elasticsearch
+    replicas: 1
+    selector:
+      matchLabels:
+        app: elasticsearch
+    template:
+      metadata:
+        labels:
+          app: elasticsearch
+      spec:
+        initContainers:
+          - name: fix-permissions
+            image: busybox
+            command: ["sh","-c","chown -R 1000:1000 /usr/share/elasticsearch/data"]
+            volumeMounts:
+              - name: data
+                mountPath: /usr/share/elasticsearch/data
+          - name: increase-vm-max-map
+            image: busybox
+            command: ["sysctl","-w","vm.max_map_count=262144"]
+            securityContext:
+              privileged: true
+        containers:
+          - name: elasticsearch
+            image: docker.elastic.co/elasticsearch/elasticsearch:8.5.1
+            ports:
+              - containerPort: 9200
+              - containerPort: 9300
+            env:
+              - name: ES_JAVA_OPTS
+                value: "-Xms1g -Xmx1g -Des.cgroups.hierarchy.override=/"
+              - name: discovery.type
+                value: single-node
+              - name: xpack.security.enabled
+                value: "false"
+              - name: xpack.ml.enabled
+                value: "false"
+            resources:
+              requests:
+                cpu: 500m
+                memory: 1Gi
+              limits:
+                cpu: 1000m
+                memory: 2Gi
+            volumeMounts:
+              - name: config
+                mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+                subPath: elasticsearch.yml
+              - name: data
+                mountPath: /usr/share/elasticsearch/data
+            readinessProbe:
+              httpGet:
+                path: /_cluster/health
+                port: 9200
+              initialDelaySeconds: 60
+              periodSeconds: 10
+              failureThreshold: 10
+        volumes:
+          - name: config
+            configMap:
+              name: elasticsearch-config
+    volumeClaimTemplates:
+      - metadata:
+          name: data
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+  EOF
+
+  NOTE: -Des.cgroups.hierarchy.override=/ tells the ES JVM to use root cgroup,
+        bypassing cgroup v2 detection issues on Linux kernel 6.x.
+        Without this flag ES throws NullPointerException on Ubuntu 24.04.
+
+
+-- Deploy and verify --
+
+  $ kubectl apply -f elasticsearch.yaml
+  $ kubectl get pods -n elk -w
+    --> Wait for: elasticsearch-0  1/1  Running  (~60-90 seconds)
+
+  $ curl -s http://localhost:9200/_cluster/health | python3 -m json.tool
+    Expected:
+      "cluster_name": "elk-lab"
+      "status": "green"
+      "number_of_nodes": 1
+
+
+================================================================================
+PHASE 3 -- DEPLOY KIBANA
+================================================================================
+
+  $ cat > kibana.yaml << 'EOF'
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: kibana-config
+    namespace: elk
+  data:
+    kibana.yml: |
+      server.name: kibana
+      server.host: "0.0.0.0"
+      elasticsearch.hosts: ["http://elasticsearch:9200"]
+      monitoring.ui.container.elasticsearch.enabled: true
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: kibana
+    namespace: elk
+  spec:
+    type: NodePort
+    selector:
+      app: kibana
+    ports:
+      - port: 5601
+        targetPort: 5601
+        nodePort: 30601
+  ---
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: kibana
+    namespace: elk
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: kibana
+    template:
+      metadata:
+        labels:
+          app: kibana
+      spec:
+        containers:
+          - name: kibana
+            image: docker.elastic.co/kibana/kibana:8.5.1
+            ports:
+              - containerPort: 5601
+            env:
+              - name: ELASTICSEARCH_HOSTS
+                value: "http://elasticsearch:9200"
+              - name: SERVER_HOST
+                value: "0.0.0.0"
+              - name: XPACK_SECURITY_ENABLED
+                value: "false"
+              - name: XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY
+                value: "a7a6311933d3503b89bc2dbc36572c33a6c10925682e591bffcab6911c06786d"
+            resources:
+              requests:
+                cpu: 300m
+                memory: 512Mi
+              limits:
+                cpu: 1000m
+                memory: 1Gi
+            volumeMounts:
+              - name: config
+                mountPath: /usr/share/kibana/config/kibana.yml
+                subPath: kibana.yml
+            readinessProbe:
+              httpGet:
+                path: /api/status
+                port: 5601
+              initialDelaySeconds: 60
+              periodSeconds: 10
+              failureThreshold: 10
+        volumes:
+          - name: config
+            configMap:
+              name: kibana-config
+  EOF
+
+  $ kubectl apply -f kibana.yaml
+  $ kubectl get pods -n elk -w
+    --> Wait for: kibana-xxx  1/1  Running
+
+  Access: http://<EC2-PUBLIC-IP>:5601
+
+
+================================================================================
+PHASE 4 -- DEPLOY LOGSTASH
+================================================================================
+
+Pipeline flow:
+  input  --> beats port 5044        (receives from Filebeat)
+  filter --> grok                   (parses raw log string into fields)
+          --> date                  (normalizes @timestamp)
+          --> mutate                (adds k8s_namespace, k8s_pod, k8s_container)
+  output --> elasticsearch port 9200 (index: k8s-logs-YYYY.MM.DD)
+
+
+  $ cat > logstash.yaml << 'EOF'
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: logstash-config
+    namespace: elk
+  data:
+    logstash.yml: |
+      http.host: "0.0.0.0"
+      xpack.monitoring.enabled: false
+    pipelines.yml: |
+      - pipeline.id: main
+        path.config: "/usr/share/logstash/pipeline/logstash.conf"
+    logstash.conf: |
+      input {
+        beats { port => 5044 }
+      }
+      filter {
+        if [kubernetes] {
+          mutate {
+            add_field => {
+              "k8s_namespace" => "%{[kubernetes][namespace]}"
+              "k8s_pod"       => "%{[kubernetes][pod][name]}"
+              "k8s_container" => "%{[kubernetes][container][name]}"
+            }
+          }
+        }
+        if [k8s_namespace] == "sample-app" {
+          grok {
+            match => {
+              "message" => "%{TIMESTAMP_ISO8601:log_timestamp} \[%{LOGLEVEL:log_level}\] %{WORD:service}-%{WORD:sub_service} - %{DATA:log_message} - reqId=%{DATA:request_id} userId=%{GREEDYDATA:user_id}"
+            }
+            tag_on_failure => ["_grokparsefailure"]
+          }
+          if "_grokparsefailure" not in [tags] {
+            mutate { add_field => { "parsed" => "true" } }
+          }
+        }
+        date {
+          match => ["log_timestamp","ISO8601"]
+          target => "@timestamp"
+          tag_on_failure => ["_dateparsefailure"]
+        }
+      }
+      output {
+        elasticsearch {
+          hosts => ["http://elasticsearch:9200"]
+          index => "k8s-logs-%{+YYYY.MM.dd}"
+        }
+      }
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: logstash
+    namespace: elk
+  spec:
+    selector:
+      app: logstash
+    ports:
+      - name: beats
+        port: 5044
+        targetPort: 5044
+      - name: http
+        port: 9600
+        targetPort: 9600
+  ---
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: logstash
+    namespace: elk
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: logstash
+    template:
+      metadata:
+        labels:
+          app: logstash
+      spec:
+        containers:
+          - name: logstash
+            image: docker.elastic.co/logstash/logstash:8.5.1
+            ports:
+              - containerPort: 5044
+              - containerPort: 9600
+            env:
+              - name: LS_JAVA_OPTS
+                value: "-Xms512m -Xmx512m -Des.cgroups.hierarchy.override=/"
+            resources:
+              requests:
+                cpu: 200m
+                memory: 512Mi
+              limits:
+                cpu: 1000m
+                memory: 1Gi
+            volumeMounts:
+              - name: config
+                mountPath: /usr/share/logstash/config/logstash.yml
+                subPath: logstash.yml
+              - name: config
+                mountPath: /usr/share/logstash/config/pipelines.yml
+                subPath: pipelines.yml
+              - name: pipeline
+                mountPath: /usr/share/logstash/pipeline/logstash.conf
+                subPath: logstash.conf
+            readinessProbe:
+              httpGet:
+                path: /
+                port: 9600
+              initialDelaySeconds: 60
+              periodSeconds: 10
+              failureThreshold: 10
+        volumes:
+          - name: config
+            configMap:
+              name: logstash-config
+          - name: pipeline
+            configMap:
+              name: logstash-config
+  EOF
+
+  $ kubectl apply -f logstash.yaml
+  $ kubectl get pods -n elk -w
+    --> Wait for: logstash-xxx  1/1  Running
+
+
+================================================================================
+PHASE 5 -- DEPLOY FILEBEAT
+================================================================================
+
+WHY DAEMONSET?
+  Container logs live at /var/log/containers/ on each node.
+  Filebeat must run on EVERY node to read them.
+  DaemonSet = one pod per node, auto-updated as nodes join/leave.
+
+RBAC NEEDED:
+  Filebeat queries the K8s API to enrich logs with pod metadata.
+  Requires: ServiceAccount + ClusterRole + ClusterRoleBinding
+  Permissions: get/list/watch on pods, nodes, namespaces
+
+
+  $ cat > filebeat.yaml << 'EOF'
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: filebeat-config
+    namespace: elk
+  data:
+    filebeat.yml: |
+      filebeat.inputs:
+      - type: container
+        paths:
+          - /var/log/containers/*.log
+        processors:
+          - add_kubernetes_metadata:
+              host: ${NODE_NAME}
+              matchers:
+              - logs_path:
+                  logs_path: "/var/log/containers/"
+      processors:
+        - add_cloud_metadata:
+        - add_host_metadata:
+      output.logstash:
+        hosts: ["logstash:5044"]
+      logging.level: info
+  ---
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: filebeat
+  rules:
+    - apiGroups: [""]
+      resources: ["namespaces","pods","nodes"]
+      verbs: ["get","list","watch"]
+  ---
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: filebeat
+  subjects:
+    - kind: ServiceAccount
+      name: filebeat
+      namespace: elk
+  roleRef:
+    kind: ClusterRole
+    name: filebeat
+    apiGroup: rbac.authorization.k8s.io
+  ---
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: filebeat
+    namespace: elk
+  ---
+  apiVersion: apps/v1
+  kind: DaemonSet
+  metadata:
+    name: filebeat
+    namespace: elk
+  spec:
+    selector:
+      matchLabels:
+        app: filebeat
+    template:
+      metadata:
+        labels:
+          app: filebeat
+      spec:
+        serviceAccountName: filebeat
+        terminationGracePeriodSeconds: 30
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+        containers:
+          - name: filebeat
+            image: docker.elastic.co/beats/filebeat:8.5.1
+            args: ["-c","/etc/filebeat.yml","-e"]
+            env:
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 256Mi
+            volumeMounts:
+              - name: config
+                mountPath: /etc/filebeat.yml
+                subPath: filebeat.yml
+              - name: varlibdockercontainers
+                mountPath: /var/lib/docker/containers
+                readOnly: true
+              - name: varlogcontainers
+                mountPath: /var/log/containers
+                readOnly: true
+              - name: varlogpods
+                mountPath: /var/log/pods
+                readOnly: true
+        volumes:
+          - name: config
+            configMap:
+              name: filebeat-config
+          - name: varlibdockercontainers
+            hostPath:
+              path: /var/lib/docker/containers
+          - name: varlogcontainers
+            hostPath:
+              path: /var/log/containers
+          - name: varlogpods
+            hostPath:
+              path: /var/log/pods
+  EOF
+
+  $ kubectl apply -f filebeat.yaml
+  $ kubectl get pods -n elk -w
+    --> Wait for: filebeat-xxx  1/1  Running
+
+
+================================================================================
+PHASE 6 -- DEPLOY SAMPLE APPLICATION
+================================================================================
+
+  $ cat > sample-app.yaml << 'EOF'
+  apiVersion: v1
+  kind: Namespace
+  metadata:
+    name: sample-app
+  ---
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: log-generator
+    namespace: sample-app
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: log-generator
+    template:
+      metadata:
+        labels:
+          app: log-generator
+      spec:
+        containers:
+          - name: log-generator
+            image: busybox
+            command:
+              - /bin/sh
+              - -c
+              - |
+                LEVELS="INFO INFO INFO WARN ERROR"
+                SERVICES="auth-service payment-service user-service order-service"
+                while true; do
+                  LEVEL=$(echo $LEVELS | tr ' ' '\n' | sed -n "$((RANDOM % 5 + 1))p")
+                  SERVICE=$(echo $SERVICES | tr ' ' '\n' | sed -n "$((RANDOM % 4 + 1))p")
+                  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [$LEVEL] $SERVICE - Log message - reqId=req-$RANDOM userId=user-$((RANDOM % 100))"
+                  sleep $((RANDOM % 3 + 1))
+                done
+            resources:
+              requests:
+                cpu: 50m
+                memory: 32Mi
+              limits:
+                cpu: 100m
+                memory: 64Mi
+  EOF
+
+  $ kubectl apply -f sample-app.yaml
+  $ kubectl get pods -n sample-app -w
+    --> Wait for: log-generator-xxx  1/1  Running
+
+  Verify logs are being generated:
+    $ kubectl logs -n sample-app -l app=log-generator --tail=10
+
+  Sample output:
+    2026-03-05T11:46:38Z [WARN]  order-service   - Slow query     - reqId=req-3476  userId=user-9
+    2026-03-05T11:46:42Z [ERROR] auth-service    - Auth failed    - reqId=req-28092 userId=user-88
+    2026-03-05T11:46:46Z [INFO]  payment-service - Payment OK     - reqId=req-4852  userId=user-56
+
+
+================================================================================
+PHASE 7 -- VERIFY LOG FLOW
+================================================================================
+
+-- All pods running --
+
+  $ kubectl get pods -n elk
+    elasticsearch-0    1/1  Running
+    filebeat-xxx       1/1  Running
+    kibana-xxx         1/1  Running
+    logstash-xxx       1/1  Running
+
+  $ kubectl get pods -n sample-app
+    log-generator-xxx  1/1  Running
+
+
+-- Elasticsearch index check --
+
+  $ curl -s http://localhost:9200/_cat/indices?v
+    --> Should show: k8s-logs-YYYY.MM.DD with docs.count > 0 and growing
+
+
+-- Cluster health --
+
+  $ curl -s http://localhost:9200/_cluster/health | python3 -m json.tool
+    --> "status": "green"
+
+
+-- Count error logs --
+
+  $ curl -s "http://localhost:9200/k8s-logs-*/_count" \
+      -H "Content-Type: application/json" \
+      -d '{"query": {"match": {"message": "ERROR"}}}' | python3 -m json.tool
+
+
+-- Check parsed fields --
+
+  $ curl -s "http://localhost:9200/k8s-logs-*/_search" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "size": 3,
+        "query": {"term": {"parsed": "true"}},
+        "_source": ["log_level","service","log_message","request_id","user_id","k8s_pod"]
+      }' | python3 -m json.tool
+
+
+-- Resource usage --
+
+  $ kubectl top nodes
+  $ kubectl top pods -n elk
+  $ kubectl top pods -n sample-app
+
+
+================================================================================
+PHASE 8 -- KIBANA: EXPLORE LOGS
+================================================================================
+
+-- Create Data View --
+
+  1. Open http://<EC2-PUBLIC-IP>:5601
+  2. Menu --> Stack Management --> Data Views
+  3. Create data view:
+       Name           : k8s-logs
+       Index pattern  : k8s-logs-*
+       Timestamp field: @timestamp
+  4. Save data view to Kibana
+
+
+-- Discover --
+
+  1. Menu --> Discover
+  2. Select k8s-logs from top-left dropdown
+  3. Set time range: Last 1 hour
+
+  Useful columns to add (click + in left sidebar):
+    k8s_namespace  /  k8s_pod  /  k8s_container  /  log_level  /  message
+
+
+-- KQL Search Queries --
+
+  All sample-app logs:
+    k8s_namespace : "sample-app"
+
+  Only ERRORs:
+    log_level : "ERROR"
+
+  Specific pod:
+    k8s_pod : "elasticsearch-0"
+
+  Errors in elk namespace:
+    k8s_namespace : "elk" and log_level : "ERROR"
+
+  Specific user:
+    user_id : "user-88"
+
+  Specific request:
+    request_id : "req-28092"
+
+  Wildcard pod search:
+    k8s_pod : *kibana*
+
+
+================================================================================
+PHASE 9 -- PRODUCTION PATTERNS
+================================================================================
+
+-- ILM Policy --
+
+  $ curl -s -X PUT "http://localhost:9200/_ilm/policy/k8s-logs-policy" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "policy": {
+          "phases": {
+            "hot":  {"min_age":"0ms",  "actions": {"rollover": {"max_age":"1d","max_size":"10gb"}, "set_priority": {"priority":100}}},
+            "warm": {"min_age":"1d",   "actions": {"shrink": {"number_of_shards":1}, "forcemerge": {"max_num_segments":1}, "set_priority": {"priority":50}}},
+            "cold": {"min_age":"7d",   "actions": {"set_priority": {"priority":0}}},
+            "delete":{"min_age":"30d", "actions": {"delete": {}}}
+          }
+        }
+      }' | python3 -m json.tool
+
+  Verify:
+    $ curl -s "http://localhost:9200/_ilm/policy/k8s-logs-policy" | python3 -m json.tool
+
+
+-- Index Template --
+
+  Automatically applies settings, mappings, and ILM to every new k8s-logs-* index.
+
+  $ curl -s -X PUT "http://localhost:9200/_index_template/k8s-logs-template" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "index_patterns": ["k8s-logs-*"],
+        "template": {
+          "settings": {
+            "number_of_shards": 1,
+            "number_of_replicas": 0,
+            "index.lifecycle.name": "k8s-logs-policy",
+            "index.lifecycle.rollover_alias": "k8s-logs"
+          },
+          "mappings": {
+            "properties": {
+              "@timestamp":    {"type":"date"},
+              "message":       {"type":"text"},
+              "k8s_namespace": {"type":"keyword"},
+              "k8s_pod":       {"type":"keyword"},
+              "k8s_container": {"type":"keyword"},
+              "log_level":     {"type":"keyword"},
+              "service":       {"type":"keyword"},
+              "request_id":    {"type":"keyword"},
+              "user_id":       {"type":"keyword"}
+            }
+          }
+        },
+        "priority": 100
+      }' | python3 -m json.tool
+
+  Verify:
+    $ curl -s "http://localhost:9200/_index_template/k8s-logs-template" \
+        | python3 -m json.tool | head -30
+
+
+-- Kibana Alert --
+
+  Menu --> Stack Management --> Rules --> Create rule
+
+    Name        : High Error Rate Alert
+    Rule type   : Elasticsearch query
+    Index       : k8s-logs-*
+    Time field  : @timestamp
+    Query       : {"match": {"message": "ERROR"}}
+    Threshold   : IS ABOVE 10
+    Time window : Last 5 minutes
+    Check every : 1 minute
+
+  In production connect actions to Slack / PagerDuty / Email.
+
+
+-- Production Monitoring Commands --
+
+  Index stats:
+    $ curl -s "http://localhost:9200/_cat/indices?v&h=index,health,docs.count,store.size"
+
+  Shard allocation:
+    $ curl -s "http://localhost:9200/_cat/shards?v"
+
+  Node resource usage:
+    $ curl -s "http://localhost:9200/_cat/nodes?v&h=name,cpu,ram.percent,heap.percent,load_1m"
+
+  Cluster stats:
+    $ curl -s "http://localhost:9200/_cluster/stats" | python3 -m json.tool
+
+  ILM phase per index:
+    $ curl -s "http://localhost:9200/_cat/indices?v&h=index,ilm.phase,ilm.age"
+
+
+================================================================================
+TROUBLESHOOTING REFERENCE
+================================================================================
+
+  SYMPTOM                     COMMAND                              FIX
+  --------------------------------------------------------------------------
+  Pod stuck in Pending        kubectl describe pod <name> -n elk   Check Events
+  Pod CrashLoopBackOff        kubectl logs <pod> -n elk            Check startup errors
+  Port-forward dropped        pgrep -a kubectl                     Restart with nohup
+  No logs in ES               kubectl logs -n elk -l app=filebeat  Check connectivity
+  Kibana can't reach ES       kubectl logs -n elk -l app=kibana    Check service name
+  High resource usage         kubectl top pods -n elk              Reduce requests/limits
+
+
+-- Useful diagnostic commands --
+
+  $ kubectl get all -n elk
+  $ kubectl describe pod <name> -n elk
+  $ kubectl logs -f <pod> -n elk
+  $ kubectl logs <pod> -n elk --previous       # after crash
+  $ kubectl top pods -n elk
+  $ kubectl get pvc -n elk
+  $ kubectl get configmap -n elk
+  $ kubectl exec -it elasticsearch-0 -n elk -- bash
+  $ kubectl exec -n elk elasticsearch-0 -- env | grep -i xpack
+  $ kubectl rollout restart deployment/<name> -n elk
+  $ kubectl rollout status deployment/<name> -n elk
+
+
+-- Port-forward management --
+
+  Start:
+    $ nohup kubectl port-forward svc/elasticsearch -n elk \
+        9200:9200 --address 0.0.0.0 > /tmp/es-pf.log 2>&1 &
+    $ nohup kubectl port-forward svc/kibana -n elk \
+        5601:5601 --address 0.0.0.0 > /tmp/kibana-pf.log 2>&1 &
+
+  Check:
+    $ pgrep -a kubectl
+
+  Kill all:
+    $ pkill -f "kubectl port-forward"
+
+  View logs:
+    $ tail -f /tmp/es-pf.log
+    $ tail -f /tmp/kibana-pf.log
+
+
+================================================================================
+WHAT THIS LAB DELIVERS
+================================================================================
+
+  Collects   --> All pod logs auto-collected via Filebeat DaemonSet
+  Processes  --> Raw logs parsed into structured fields via Logstash Grok
+  Stores     --> Elasticsearch with PVC, daily indices, ILM lifecycle
+  Visualizes --> Kibana Discover, Dashboards, KQL search
+  Alerts     --> Kibana Rules on error rate thresholds
+
+  This mirrors a real production ELK setup used by teams managing
+  hundreds of microservices and terabytes of log data daily.
+
+================================================================================
+  END OF LAB
+================================================================================
