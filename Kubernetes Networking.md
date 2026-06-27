@@ -16,7 +16,7 @@
 
 ## 1. Pod & Node Communication
 
-### CNI: The Matchmaker 💘
+### CNI: The Matchmaker 
 
 CNI (Container Network Interface) is basically Tinder for pods. It gives them IPs and helps them find each other.
 
